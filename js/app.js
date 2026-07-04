@@ -211,7 +211,14 @@ function ttsControls(js) {
 }
 
 /* ---------- streak / xp ---------- */
-function addXP(n) { S.xp += n; save(); renderStats(); }
+function addXP(n) {
+  S.xp += n;
+  const t = todayKey();
+  if (!S.day || S.day.date !== t) S.day = { date: t, xp: 0, hit: false };
+  S.day.xp += n;
+  if (S.day.xp >= 30 && !S.day.hit) { S.day.hit = true; setTimeout(() => toast("🎯 Meta diária batida — 30 XP! Optimē!"), 600); }
+  save(); renderStats();
+}
 function bumpStreak() {
   const t = todayKey();
   if (S.lastDay === t) return;
@@ -287,6 +294,8 @@ const App = {
   go(view, arg) {
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.nav === view));
     speechSynthesis && speechSynthesis.cancel();
+    window._ab = null;
+    window._rerenderReader = null;
     hideGloss();
     if (view === "home") renderHome();
     if (view === "review") renderReview();
@@ -421,7 +430,8 @@ function renderExercise() {
   else if (ex.t === "listen") h += exListen(ex);
   else if (ex.t === "read") h += exRead(ex);
   h += `<div id="feedback" class="feedback"><div class="fb-text" id="fb-text"></div></div>
-  <button id="btn-continue" class="btn-main" onclick="nextExercise()" style="display:none">Continuar</button>`;
+  <button id="btn-continue" class="btn-main" onclick="nextExercise()" style="display:none">Continuar</button>
+  <p class="kbd-hint"><kbd>1</kbd>–<kbd>9</kbd> escolhe · <kbd>Enter</kbd> confirma/continua · <kbd>⌫</kbd> desfaz</p>`;
   $("#view").innerHTML = h;
   const inp = $("#type-input"); if (inp) { inp.focus(); inp.addEventListener("keydown", e => { if (e.key === "Enter") checkType(); }); }
   if (ex.t === "flash") speak(ex.v.la);
@@ -671,13 +681,18 @@ function openLectio(ch) {
       <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
       <span><i style="background:transparent;border:1px solid var(--glass-border)"></i>conhecida</span>
       <span>👆 toca na palavra pra ver o significado</span></div>
-    ${ttsControls("speakLectio()")}
+    ${abControls()}
     <div class="reader-text" id="reader-text">${readerHTML(lec.text)}</div>
   </div>
+  <button class="btn-main btn-ghost" style="margin-top:14px" onclick="openPensumA()">✏️ Pēnsum A — complete as terminações</button>
   <div class="exercise glass" style="margin-top:16px"><div class="ex-kind">Pēnsum C — entendeu?</div><div id="lectio-qs"></div></div>`;
   $("#view").innerHTML = h;
   window._lectioText = lec.text;
   window._lectioCh = ch;
+  abInit();
+  window._paSource = { title: lec.title, text: lec.text };
+  window._paScored = false;
+  window._rerenderReader = () => openLectio(ch);
   renderLectioQs(ch, 0, 0);
   bindReaderWords();
   window.scrollTo(0, 0);
@@ -713,17 +728,201 @@ function lectioAnswer(i, a, qi, correct, btn) {
 }
 
 /* ============================================================
+   AUDIOBOOK (karaokê frase a frase)
+   ============================================================ */
+function abControls() {
+  return `<div class="tts-row" id="ab-controls">
+    <button class="speak-btn" id="ab-play" onclick="abToggle()">▶️ ouvir</button>
+    <button class="speak-btn" onclick="abStep(-1)" title="frase anterior">⏮</button>
+    <button class="speak-btn" onclick="abStep(1)" title="próxima frase">⏭</button>
+    <button class="speak-btn" onclick="abRepeat()" title="repete a frase">🔁</button>
+    <button class="speak-btn" onclick="changeRate(-1)" title="mais devagar">🐢</button>
+    <span class="tts-rate">${rateLabel()}</span>
+    <button class="speak-btn" onclick="changeRate(1)" title="mais rápido">🐇</button>
+    <button class="speak-btn ${S.hideMacrons ? "toggled" : ""}" onclick="toggleMacrons()" title="esconde/mostra macrons (modo texto real)">ā/a</button>
+  </div>`;
+}
+function abInit() {
+  window._ab = { sents: readerHTML._sents.slice(), i: 0, playing: false };
+}
+function abHighlight(i) {
+  document.querySelectorAll(".snt.playing").forEach(el => el.classList.remove("playing"));
+  const el = document.querySelector(`.snt[data-si="${i}"]`);
+  if (el) { el.classList.add("playing"); el.scrollIntoView({ block: "center", behavior: "smooth" }); }
+}
+function abSpeakSentence(i) {
+  const ab = window._ab;
+  if (!ab || i >= ab.sents.length || i < 0) return abStopUI();
+  ab.i = i;
+  abHighlight(i);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(stripMacrons(ab.sents[i]));
+  if (VOICE) u.voice = VOICE;
+  u.lang = VOICE ? VOICE.lang : "it-IT";
+  u.rate = S.rate || 0.85;
+  u.onend = () => {
+    if (!window._ab || !window._ab.playing) return;
+    if (ab.i + 1 < ab.sents.length) abSpeakSentence(ab.i + 1);
+    else abStopUI(true);
+  };
+  speechSynthesis.speak(u);
+}
+function abToggle() {
+  const ab = window._ab;
+  if (!ab) return;
+  if (ab.playing) {
+    ab.playing = false;
+    speechSynthesis.cancel();
+    const b = $("#ab-play"); if (b) b.textContent = "▶️ ouvir";
+  } else {
+    ab.playing = true;
+    const b = $("#ab-play"); if (b) b.textContent = "⏸ pausa";
+    abSpeakSentence(ab.i);
+  }
+}
+function abStep(d) {
+  const ab = window._ab; if (!ab) return;
+  ab.i = Math.max(0, Math.min(ab.sents.length - 1, ab.i + d));
+  abHighlight(ab.i);
+  if (ab.playing) abSpeakSentence(ab.i);
+  else { speechSynthesis.cancel(); abSpeakSentence0(ab.i); }
+}
+function abSpeakSentence0(i) { // fala uma frase sem engatar a próxima
+  const ab = window._ab; if (!ab) return;
+  abHighlight(i);
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(stripMacrons(ab.sents[i]));
+  if (VOICE) u.voice = VOICE;
+  u.lang = VOICE ? VOICE.lang : "it-IT";
+  u.rate = S.rate || 0.85;
+  speechSynthesis.speak(u);
+}
+function abRepeat() {
+  const ab = window._ab; if (!ab) return;
+  if (ab.playing) abSpeakSentence(ab.i); else abSpeakSentence0(ab.i);
+}
+function abStopUI(finished) {
+  const ab = window._ab;
+  if (ab) { ab.playing = false; if (finished) ab.i = 0; }
+  document.querySelectorAll(".snt.playing").forEach(el => el.classList.remove("playing"));
+  const b = $("#ab-play"); if (b) b.textContent = "▶️ ouvir";
+}
+function toggleMacrons() {
+  S.hideMacrons = !S.hideMacrons;
+  save();
+  toast(S.hideMacrons ? "ā/a — modo texto real: macrons escondidos (toca na palavra pra ver)" : "ā/a — macrons visíveis");
+  if (window._rerenderReader) window._rerenderReader();
+}
+
+/* ============================================================
+   PĒNSUM A — terminações apagadas em qualquer leitura
+   ============================================================ */
+function openPensumA() {
+  const src = window._paSource;
+  if (!src) return;
+  // escolhe palavras que o motor sabe analisar
+  const seen = new Set(), items = {};
+  for (const m of src.text.matchAll(/[A-Za-zĀĒĪŌŪȲāēīōūȳ]+/g)) {
+    const w = m[0], n = norm(w);
+    if (n.length < 4 || seen.has(n)) continue;
+    const e = FORM_INDEX[n];
+    if (!e) continue;
+    let an;
+    try { an = analyzeForm(w, e); } catch { continue; }
+    if (!an || !an[0] || an[0].kind !== "noun" || !an[0].case) continue;
+    const stemN = mNorm(an[0].cls.stem);
+    if (!n.startsWith(stemN)) continue;
+    const endLen = n.length - stemN.length;
+    if (endLen < 1 || endLen > 4 || endLen >= w.length) continue;
+    seen.add(n);
+    items[n] = { end: w.slice(w.length - endLen), la: e.la, pt: e.pt };
+  }
+  const chosenKeys = shuffle(Object.keys(items)).slice(0, 12);
+  const chosen = new Set(chosenKeys);
+  if (chosen.size < 4) { toast("Texto curto demais pra gerar um Pēnsum aqui"); return; }
+  window._paItems = [];
+  let gi = 0;
+  const html = src.text.split(/\n\n+/).map(p =>
+    `<p>${p.replace(/([A-Za-zĀĒĪŌŪȲāēīōūȳ]+)/g, w => {
+      const n = norm(w);
+      if (chosen.has(n)) {
+        chosen.delete(n); // só a primeira ocorrência vira lacuna
+        const it = items[n];
+        window._paItems.push({ end: it.end, la: it.la, pt: it.pt, full: w });
+        const stem = w.slice(0, w.length - it.end.length);
+        return `${esc(stem)}<input class="pa-input" data-pi="${gi++}" maxlength="6" autocomplete="off" autocapitalize="off" spellcheck="false">`;
+      }
+      return w;
+    })}</p>`).join("");
+  $("#view").innerHTML = `<div class="lesson-top"><button class="btn-quit" onclick="window._rerenderReader && window._rerenderReader()">←</button>
+    <h1 class="page-title" style="margin:0">Pēnsum A</h1></div>
+  <div class="reader glass">
+    <div class="r-meta">${esc(src.title)} · complete as terminações (macrons opcionais)</div>
+    <div class="reader-text" style="font-size:1.08rem;line-height:2.2">${html}</div>
+  </div>
+  <div id="pa-result" class="feedback" style="margin-top:14px"><div class="fb-text" id="pa-text"></div></div>
+  <button class="btn-main" id="pa-check" onclick="checkPensumA()">Verificar (+1 XP por acerto)</button>
+  <button class="btn-main btn-ghost" style="margin-top:8px" onclick="revealPensumA()">Mostrar respostas</button>`;
+  const first = document.querySelector(".pa-input");
+  if (first) first.focus();
+  window.scrollTo(0, 0);
+}
+function checkPensumA() {
+  let ok = 0, total = 0;
+  document.querySelectorAll(".pa-input").forEach(inp => {
+    const it = window._paItems[+inp.dataset.pi];
+    total++;
+    const good = norm(inp.value) === norm(it.end) && inp.value.trim() !== "";
+    inp.classList.remove("pa-ok", "pa-bad");
+    inp.classList.add(good ? "pa-ok" : "pa-bad");
+    inp.title = it.la + " = " + it.pt;
+    if (good) { ok++; inp.disabled = true; }
+  });
+  const fresh = window._paScored ? 0 : ok;
+  if (!window._paScored && ok > 0) { addXP(ok); bumpStreak(); }
+  window._paScored = true;
+  const r = $("#pa-result");
+  r.classList.add("show", ok === total ? "ok" : "bad");
+  $("#pa-text").innerHTML = ok === total
+    ? `🏆 <b>Pēnsum solūtum!</b> ${ok}/${total} — Optimē!`
+    : `${ok}/${total} certas${fresh ? ` (+${fresh} XP)` : ""}. As vermelhas ainda dão pra corrigir e verificar de novo.`;
+}
+function revealPensumA() {
+  document.querySelectorAll(".pa-input").forEach(inp => {
+    const it = window._paItems[+inp.dataset.pi];
+    inp.value = it.end;
+    inp.disabled = true;
+    inp.classList.add("pa-ok");
+  });
+  toast("Respostas reveladas — sem XP dessa vez 😉");
+  window._paScored = true;
+}
+
+/* ============================================================
    READER core (LingQ style)
    ============================================================ */
+const stripMacrons = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ȳ/g, "y").replace(/Ȳ/g, "Y");
+function wrapWords(s, plain) {
+  return s.replace(/([A-Za-zĀĒĪŌŪȲāēīōūȳ]+)/g, m => {
+    const n = norm(m);
+    if (n.length < 2) return S.hideMacrons && !plain ? stripMacrons(m) : m;
+    const st = S.words[n]; // undefined=new, 1=learning, 2=known
+    const cls = plain ? "" : (st === 2 ? "" : st === 1 ? "learning" : "new");
+    const shown = S.hideMacrons && !plain ? stripMacrons(m) : m;
+    return `<span class="w ${cls}" data-w="${esc(m)}">${shown}</span>`;
+  });
+}
 function readerHTML(text, plain) {
-  return text.split(/\n\n+/).map(p =>
-    `<p>${p.replace(/([A-Za-zĀĒĪŌŪȲāēīōūȳ]+)/g, m => {
-      const n = norm(m);
-      if (n.length < 2) return m;
-      const st = S.words[n]; // undefined=new, 1=learning, 2=known
-      const cls = plain ? "" : (st === 2 ? "" : st === 1 ? "learning" : "new");
-      return `<span class="w ${cls}" data-w="${esc(m)}">${m}</span>`;
-    })}</p>`).join("");
+  let si = 0;
+  readerHTML._sents = [];
+  const html = text.split(/\n\n+/).map(p => {
+    const sents = p.split(/(?<=[.!?…])(?=\s)/).map(s => s.trim()).filter(Boolean);
+    return `<p>${sents.map(s => {
+      readerHTML._sents.push(s);
+      return `<span class="snt" data-si="${si++}">${wrapWords(s, plain)}</span>`;
+    }).join(" ")}</p>`;
+  }).join("");
+  return html;
 }
 function bindReaderWords() {
   document.querySelectorAll(".w").forEach(el => {
@@ -940,7 +1139,11 @@ document.addEventListener("click", e => { if (!e.target.closest("#gloss-pop") &&
 function renderLibrary() {
   const maxCap = maxUnlockedCap();
   let h = `<h1 class="page-title">Bibliothēca</h1>
-  <p class="page-sub">Leituras graduadas estilo LingQ: toque nas palavras que não conhece. Desbloqueie mais completando capítulos.</p>`;
+  <p class="page-sub">Leituras graduadas estilo LingQ: toque nas palavras que não conhece. Desbloqueie mais completando capítulos.</p>
+
+  <input id="vocab-search" class="type-input" style="margin-bottom:6px" placeholder="🔎 Vocabulārium — busca latim ou português (ex.: ovibus, ovelha…)"
+    autocomplete="off" autocapitalize="off" spellcheck="false">
+  <div id="vocab-results"></div>`;
 
   h += `<h2 class="lib-section">📖 Fabellae Latīnae <small>historinhas</small></h2>`;
   FABELLAE.forEach(f => {
@@ -966,6 +1169,39 @@ function renderLibrary() {
     </div>`;
   });
   $("#view").innerHTML = h;
+  const si = $("#vocab-search");
+  if (si) si.addEventListener("input", () => vocabSearch(si.value));
+}
+function vocabSearch(q) {
+  const box = $("#vocab-results");
+  const nq = norm(q);
+  if (!nq || nq.length < 2) { box.innerHTML = ""; return; }
+  const qLower = q.toLowerCase().trim();
+  const hits = [];
+  const pushed = new Set();
+  const add = (en, via) => {
+    const k = en.la + en.cap;
+    if (pushed.has(k)) return;
+    pushed.add(k);
+    hits.push({ en, via });
+  };
+  // forma flexionada exata
+  if (FORM_INDEX[nq]) add(FORM_INDEX[nq], "forma de");
+  DICT.forEach(en => {
+    if (en.fn) return;
+    if (norm(en.la).startsWith(nq)) add(en);
+    else if (en.pt.toLowerCase().includes(qLower)) add(en, "pt");
+  });
+  box.innerHTML = hits.slice(0, 20).map(h => {
+    const ch = h.en.cap ? `cap. ${h.en.cap}` : "nome/extra";
+    const cls = (typeof nounClass === "function") ? (() => { try { return nounClass(h.en); } catch { return null; } })() : null;
+    return `<div class="lib-item glass" style="padding:11px 14px;margin-bottom:8px">
+      <div class="lib-info"><div class="lib-title" style="font-size:.98rem">${h.via === "forma de" ? `<span style="color:var(--text-dim);font-size:.8rem">${esc(q)} → forma de </span>` : ""}${esc(h.en.la)} <span style="color:var(--text-dim);font-size:.78rem;font-style:italic">${esc(h.en.forms || "")}</span></div>
+      <div class="lib-sub">${esc(h.en.pt)} · ${ch}</div></div>
+      <button class="speak-btn" style="margin:0" onclick="event.stopPropagation();speak('${esc(h.en.la).replace(/'/g, "\\'")}')">🔊</button>
+      ${cls ? `<button class="speak-btn" style="margin:0" onclick='event.stopPropagation();window._paradigm={entry:${JSON.stringify({ la: h.en.la, forms: h.en.forms, pt: h.en.pt }).replace(/'/g, "&#39;")},an:[{kind:"noun",cls:${JSON.stringify(cls).replace(/'/g, "&#39;")},case:null,table:null}]};showParadigm()'>📊</button>` : ""}
+    </div>`;
+  }).join("") || `<p class="ex-hint">Nada achado com "${esc(q)}".</p>`;
 }
 function openColloquium(id) {
   const c = COLLOQUIA.find(x => x.id === id);
@@ -977,12 +1213,16 @@ function openColloquium(id) {
     <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>nova</span>
       <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
       <span>👆 toca na palavra pra ver o significado</span></div>
-    ${ttsControls("speak(window._fabText)")}
+    ${abControls()}
     <div class="reader-text">${readerHTML(c.text)}</div>
   </div>
-  <button class="btn-main" onclick="finishFabella('${c.id}')">Lēgī! — terminei de ler (+8 XP)</button>`;
+  <button class="btn-main btn-ghost" onclick="openPensumA()">✏️ Pēnsum A — complete as terminações</button>
+  <button class="btn-main" style="margin-top:8px" onclick="finishFabella('${c.id}')">Lēgī! — terminei de ler (+8 XP)</button>`;
   $("#view").innerHTML = h;
-  window._fabText = c.text.replace(/\n+/g, ". ");
+  abInit();
+  window._paSource = { title: c.title, text: c.text };
+  window._paScored = false;
+  window._rerenderReader = () => openColloquium(id);
   bindReaderWords();
   window.scrollTo(0, 0);
 }
@@ -996,12 +1236,16 @@ function openFabella(id) {
     <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>nova</span>
       <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
       <span>👆 toca na palavra pra ver o significado</span></div>
-    ${ttsControls("speak(window._fabText)")}
+    ${abControls()}
     <div class="reader-text">${readerHTML(f.text)}</div>
   </div>
-  <button class="btn-main" onclick="finishFabella('${f.id}')">Lēgī! — terminei de ler (+8 XP)</button>`;
+  <button class="btn-main btn-ghost" onclick="openPensumA()">✏️ Pēnsum A — complete as terminações</button>
+  <button class="btn-main" style="margin-top:8px" onclick="finishFabella('${f.id}')">Lēgī! — terminei de ler (+8 XP)</button>`;
   $("#view").innerHTML = h;
-  window._fabText = f.text.replace(/\n+/g, ". ");
+  abInit();
+  window._paSource = { title: f.title, text: f.text };
+  window._paScored = false;
+  window._rerenderReader = () => openFabella(id);
   bindReaderWords();
   window.scrollTo(0, 0);
 }
@@ -1070,6 +1314,7 @@ function renderProfile() {
   let h = `<h1 class="page-title">Profectus tuus</h1>
   <p class="page-sub">Seu progresso no Cursus Honorum do latim.</p>
   <div class="prof-grid">
+    <div class="prof-card glass"><div class="big">🎯 ${(S.day && S.day.date === todayKey()) ? S.day.xp : 0}/30</div><div class="lbl">XP hoje (meta diária)</div></div>
     <div class="prof-card glass"><div class="big">⚡ ${S.xp}</div><div class="lbl">XP total</div></div>
     <div class="prof-card glass"><div class="big">🔥 ${S.streak}</div><div class="lbl">dias seguidos</div></div>
     <div class="prof-card glass"><div class="big">📜 ${learning}</div><div class="lbl">palavras no SRS</div></div>
@@ -1176,6 +1421,54 @@ function resetProgress() {
   save(); renderStats(); App.go("home");
 }
 
+/* ============================================================
+   ATALHOS DE TECLADO (estilo Duolingo)
+   1-9/0 escolhe opção · Enter confirma/continua · Backspace desfaz no build
+   ============================================================ */
+document.addEventListener("keydown", e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const tag = document.activeElement && document.activeElement.tagName;
+  const typing = tag === "INPUT" || tag === "TEXTAREA";
+
+  if (e.key === "Enter") {
+    if (typing) return; // inputs já tratam Enter
+    const cont = $("#btn-continue");
+    if (cont && cont.style.display !== "none" && cont.offsetParent) { cont.click(); e.preventDefault(); return; }
+    const check = $("#btn-check");
+    if (check && !check.disabled && check.style.display !== "none" && check.offsetParent) { check.click(); e.preventDefault(); return; }
+    const main = document.querySelector(".exercise .btn-main:not(#btn-check), .lesson-end .btn-main");
+    if (main && main.offsetParent) { main.click(); e.preventDefault(); }
+    return;
+  }
+  if (typing) return;
+
+  if (/^[0-9]$/.test(e.key)) {
+    const idx = e.key === "0" ? 9 : parseInt(e.key, 10) - 1;
+    const opts = [...document.querySelectorAll(".opt")];
+    if (opts.length && opts.some(b => !b.disabled)) {
+      if (opts[idx] && !opts[idx].disabled) { opts[idx].click(); e.preventDefault(); }
+      return;
+    }
+    const pairs = [...document.querySelectorAll(".pair-btn")];
+    if (pairs.length) {
+      if (pairs[idx] && !pairs[idx].classList.contains("done")) { pairs[idx].click(); e.preventDefault(); }
+      return;
+    }
+    const toks = [...document.querySelectorAll("#bank .token")];
+    if (toks.length) {
+      const free = toks.filter(t => !t.classList.contains("ghost"));
+      if (free[idx]) { free[idx].click(); e.preventDefault(); }
+      return;
+    }
+    return;
+  }
+  if (e.key === "Backspace") {
+    if (window._built && window._built.length && $("#build-area")) { tokRemove(window._built.length - 1); e.preventDefault(); }
+    return;
+  }
+  if (e.key === " " && window._ab) { abToggle(); e.preventDefault(); }
+});
+
 /* ---------- toast ---------- */
 let toastTimer = null;
 function toast(msg) {
@@ -1189,3 +1482,7 @@ function toast(msg) {
 initCloud();
 renderStats();
 renderHome();
+// PWA: registra o service worker (só em https/localhost)
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
