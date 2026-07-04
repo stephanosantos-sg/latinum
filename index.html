@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1a1033">
+<title>LATINVM — Lingua Latina per se Illustrata</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏛️</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ===== TOP BAR ===== -->
+<header class="topbar glass">
+  <div class="brand" onclick="App.go('home')">
+    <span class="brand-icon">🏛️</span>
+    <span class="brand-name">LATINVM</span>
+  </div>
+  <div class="stats">
+    <div class="stat" title="Ofensiva (dias seguidos)"><span class="stat-icon">🔥</span><span id="stat-streak">0</span></div>
+    <div class="stat" title="XP total"><span class="stat-icon">⚡</span><span id="stat-xp">0</span></div>
+    <div class="stat" title="Palavras conhecidas"><span class="stat-icon">📜</span><span id="stat-words">0</span></div>
+    <div class="stat rank" title="Seu posto no Cursus Honorum"><span id="stat-rank">Discipulus</span></div>
+  </div>
+</header>
+
+<!-- ===== MAIN VIEWS ===== -->
+<main id="view"></main>
+
+<!-- ===== BOTTOM NAV ===== -->
+<nav class="bottomnav glass">
+  <button class="nav-btn active" data-nav="home" onclick="App.go('home')"><span>🗺️</span>Cursus</button>
+  <button class="nav-btn" data-nav="review" onclick="App.go('review')"><span>🔁</span>Repetītiō<em id="review-badge" class="badge" hidden></em></button>
+  <button class="nav-btn" data-nav="library" onclick="App.go('library')"><span>📖</span>Bibliothēca</button>
+  <button class="nav-btn" data-nav="profile" onclick="App.go('profile')"><span>🏆</span>Profectus</button>
+</nav>
+
+<!-- ===== WORD GLOSS POPUP (LingQ style) ===== -->
+<div id="gloss-pop" class="gloss-pop glass" hidden></div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast" class="toast glass" hidden></div>
+
+<script src="js/course.js"></script>
+<script src="js/fabellae.js"></script>
+<script src="js/course2.js"></script>
+<script src="js/course3.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
