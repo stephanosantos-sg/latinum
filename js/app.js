@@ -444,7 +444,8 @@ function renderExercise() {
 /* ---- exercise renderers ---- */
 function exFlash(ex) {
   const v = ex.v;
-  return `<div class="exercise glass"><div class="ex-kind">Palavra nova</div>
+  const canBack = L.idx > 0 && L.queue[L.idx - 1].t === "flash";
+  return `<div class="exercise glass"><div class="ex-kind">Palavra nova ${L.idx + 1}/${L.queue.filter(x => x.t === "flash").length}</div>
     <div class="flashcard">
       <div class="fc-word">${esc(v.la)}</div>
       <div class="fc-forms">${esc(v.forms)}</div>
@@ -452,9 +453,19 @@ function exFlash(ex) {
       <div class="fc-pt">${esc(v.pt)}</div>
       <div class="fc-ex">"${esc(v.ex)}"</div>
     </div>
-    <button class="btn-main" onclick="flashNext()">Entendi →</button></div>`;
+    <div style="display:flex;gap:10px">
+      ${canBack ? `<button class="btn-main btn-ghost" style="flex:0 0 auto;width:auto;padding:15px 20px" onclick="flashPrev()">← anterior</button>` : ""}
+      <button class="btn-main" style="flex:1" onclick="flashNext()">Entendi →</button>
+    </div></div>`;
 }
-function flashNext() { addXP(1); L.xp += 1; L.idx++; renderExercise(); }
+function flashNext() {
+  const ex = L.queue[L.idx];
+  if (!ex._seen) { ex._seen = true; addXP(1); L.xp += 1; }
+  L.idx++; renderExercise();
+}
+function flashPrev() {
+  if (L && L.idx > 0 && L.queue[L.idx - 1].t === "flash") { L.idx--; renderExercise(); }
+}
 
 function exMcqVocab(ex) {
   const v = ex.v;
@@ -1466,6 +1477,8 @@ document.addEventListener("keydown", e => {
     if (window._built && window._built.length && $("#build-area")) { tokRemove(window._built.length - 1); e.preventDefault(); }
     return;
   }
+  if (e.key === "ArrowLeft" && typeof L !== "undefined" && L && L.queue[L.idx] && L.queue[L.idx].t === "flash") { flashPrev(); e.preventDefault(); return; }
+  if (e.key === "ArrowRight" && typeof L !== "undefined" && L && L.queue[L.idx] && L.queue[L.idx].t === "flash") { flashNext(); e.preventDefault(); return; }
   if (e.key === " " && window._ab) { abToggle(); e.preventDefault(); }
 });
 
