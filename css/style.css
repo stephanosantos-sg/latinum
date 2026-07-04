@@ -91,6 +91,20 @@ main {
 h1.page-title { font-family: Georgia, serif; font-size: 1.5rem; color: var(--gold); margin: 6px 4px 4px; letter-spacing: .04em; }
 p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
 
+/* ============ LIBER TABS + CONTINUAR ============ */
+.liber-tabs { display: flex; gap: 10px; margin: 14px 0 16px; }
+.liber-tab {
+  flex: 1; padding: 10px 8px;
+  border: 1px solid var(--glass-border); border-radius: 16px;
+  background: var(--glass); color: var(--text-dim);
+  font-family: Georgia, serif; font-size: 1rem; font-weight: 700;
+  cursor: pointer; text-align: center;
+}
+.liber-tab small { display: block; font-family: -apple-system, sans-serif; font-size: .68rem; font-weight: 400; margin-top: 2px; }
+.liber-tab.active { background: var(--gold-soft); border-color: rgba(242,193,78,.5); color: var(--gold); }
+.continue-card { border-color: rgba(242,193,78,.45); margin-bottom: 4px; }
+.continue-card .lib-sub:first-child { letter-spacing: .14em; font-size: .68rem; font-weight: 800; }
+
 /* ============ COURSE PATH ============ */
 .unit-card {
   border-radius: var(--radius);

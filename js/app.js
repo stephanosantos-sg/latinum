@@ -374,9 +374,40 @@ const App = {
 };
 
 /* ---------- HOME (course path) ---------- */
+function nextLesson() {
+  // primeira lição disponível e não concluída (na ordem do curso)
+  for (const ch of COURSE) {
+    if (!chapterUnlocked(ch)) continue;
+    let prevDone = true;
+    for (const l of lessonsOf(ch)) {
+      const done = !!S.lessons[l.id];
+      if (!done && prevDone) return { ch, l };
+      prevDone = done;
+    }
+  }
+  return null;
+}
+function setLiber(n) { S.liber = n; save(); renderHome(); window.scrollTo(0, 0); }
 function renderHome() {
-  let h = `<h1 class="page-title">Cursus Latīnus</h1>
-  <p class="page-sub">Familia Rōmāna · Lingua Latīna per sē Illūstrāta — capítulo por capítulo, per sē: só latim, sem decoreba.</p>`;
+  // aba padrão: onde está a fronteira do progresso
+  if (S.liber === undefined) S.liber = (nextLesson()?.ch.num || 1) >= 36 ? 2 : 1;
+  const liber = S.liber;
+  let h = `<h1 class="page-title">Cursus Latīnus</h1>`;
+  // card "Continuar" — direto pra próxima lição
+  const nx = nextLesson();
+  if (nx) {
+    h += `<div class="lib-item glass continue-card" onclick="startLesson('${nx.ch.num}','${nx.l.id}')">
+      <div class="lib-icon">${nx.ch.icon}</div>
+      <div class="lib-info"><div class="lib-sub" style="color:var(--gold)">CONTINUAR</div>
+      <div class="lib-title">Cap. ${nx.ch.roman} · ${nx.l.icon} ${nx.l.name}</div>
+      <div class="lib-sub">${esc(nx.ch.title)}</div></div>
+      <div style="font-size:1.4rem">▶️</div></div>`;
+  }
+  // abas dos livros
+  h += `<div class="liber-tabs">
+    <button class="liber-tab ${liber === 1 ? "active" : ""}" onclick="setLiber(1)">📕 Liber I<small>Familia Rōmāna</small></button>
+    <button class="liber-tab ${liber === 2 ? "active" : ""}" onclick="setLiber(2)">📗 Liber II<small>Rōma Aeterna</small></button>
+  </div>`;
   // dica de instalação no iOS (some depois de dispensada ou instalada)
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const standalone = navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
@@ -386,9 +417,7 @@ function renderHome() {
       <p>No <b>Safari</b>: toque em <b>Compartilhar</b> (□↑) → <b>Adicionar à Tela de Início</b>. Vira um app de verdade: ícone, tela cheia e funciona offline.</p>
       <button class="btn-main btn-ghost" style="margin-top:10px" onclick="S.iosHintOff=true;save();renderHome()">Entendi, esconder</button></div>`;
   }
-  COURSE.forEach(ch => {
-    if (ch.num === 1) h += `<h2 class="lib-section">📕 LIBER I — Familia Rōmāna <small>caps. I–XXXV</small></h2>`;
-    if (ch.num === 36) h += `<h2 class="lib-section">📗 LIBER II — Rōma Aeterna <small>caps. XXXVI–LVI · prosa literária</small></h2>`;
+  COURSE.filter(ch => liber === 1 ? ch.num <= 35 : ch.num >= 36).forEach(ch => {
     const unlocked = chapterUnlocked(ch);
     const pr = chapterProgress(ch);
     const ls = lessonsOf(ch);
@@ -420,7 +449,7 @@ function renderHome() {
     <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
     <div class="lib-sub">os casos explicados do zero (dativo? ablativo?) · tempos · modos · tabelas</div></div>
     <div>→</div></div>`;
-  h += `<p class="page-sub" style="text-align:center;margin-top:20px">📗 Rōma Aeterna: capítulos XLI–LVI chegam nos próximos lotes.</p>`;
+  if (liber === 2) h += `<p class="page-sub" style="text-align:center;margin-top:20px">📗 Rōma Aeterna: capítulos XLI–LVI chegam nos próximos lotes.</p>`;
   $("#view").innerHTML = h;
 }
 function toggleUnit(num) {
