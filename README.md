@@ -16,9 +16,9 @@ python3 -m http.server 5199
 
 ## O que tem
 
-- **Cursus** — trilha de capítulos (I–XVIII). Cada capítulo: lições de vocabulário (flashcards + quiz + pares + escuta + digitação), Grammatica (cards de gramática + drills de terminação estilo Pensum A), Pēnsum (montar frases, completar lacunas digitando, mini-leituras com pergunta, exercícios de escuta) e Lēctiō (leitura do texto adaptado + perguntas de compreensão em latim).
+- **Cursus** — trilha completa dos 35 capítulos (I–XXXV). Cada capítulo: lições de vocabulário (flashcards + quiz + pares + escuta + digitação), Grammatica (cards de gramática + drills de terminação estilo Pensum A), Pēnsum (montar frases, completar lacunas digitando, mini-leituras com pergunta, exercícios de escuta) e Lēctiō (leitura do texto adaptado + perguntas de compreensão em latim).
 - **Repetītiō** — revisão espaçada (SRS, SM-2 simplificado) de todo vocabulário visto.
-- **Bibliothēca** — as 21 primeiras Fabellae Latinae no modo leitura LingQ: toca na palavra → glossário PT + status azul (nova) / amarelo (aprendendo) / sem marca (sei).
+- **Bibliothēca** — as 30 Fabellae Latinae + os 24 Colloquia Personarum no modo leitura LingQ: toca na palavra → glossário PT + status azul (nova) / amarelo (aprendendo) / sem marca (sei).
 - **Profectus** — XP, ofensiva (streak), ranking Cursus Honorum (Discipulus → Imperātor).
 - Áudio via voz do sistema (usa voz italiana como aproximação da pronúncia restaurada).
 - Progresso salvo em `localStorage` (por navegador).
@@ -41,9 +41,8 @@ artifact.html   ← versão single-file gerada (publicada como Artifact no claud
 
 `cloze` (múltipla escolha de terminação) · `mcq` · `gap` (completar lacuna digitando) · `type` (digitar) · `build` (montar frase com banco de palavras) · `pairs` (ligar pares) · `read` (mini-leitura + pergunta, palavras clicáveis) · `listen` (escuta com TTS: `{t:'listen', text, options, a}` ou automático por vocab).
 
-## Adicionar capítulos (XIX–XXXV)
+## Estrutura de conteúdo
 
-1. O texto bruto de todos os capítulos está em `content/familia_romana.txt` (procure `CAPITVLVM VNDEVICESIMVM` etc.). Atenção: cap. XIX introduz o imperfeito (amābat/erat), cap. XX o futuro — o conteúdo de gramática precisa acompanhar.
-2. Siga o padrão de `js/course3.js`: `COURSE.push({...})` com `vocab` (glosas PT), `grammar`, `pensum`, `lectio`. O engine gera as lições sozinho.
-3. Fabellas novas: `FABELLAE.push({...})` (campo `cap` controla o desbloqueio).
-4. Regenerar `artifact.html` (concatenação: charset + title + viewport + style.css + body do index + course.js/fabellae.js/course2.js/app.js inline) e republicar na mesma URL do Artifact.
+`js/course.js` (I–VIII) → `js/course2.js` (IX–XII) → `js/course3.js` (XIII–XVIII) → `js/course4a-d.js` (XIX–XXXV) → `js/fabellae.js` + `js/fabellae2.js` (30 fábulas) → `js/colloquia.js` (24 diálogos, gerado por `build_modules.py` a partir do PDF). Novos módulos: seguir o padrão `COURSE.push` / `FABELLAE.push` / `COLLOQUIA`.
+
+Para atualizar o site: commit + push (GitHub Pages). Para atualizar o Artifact: regenerar `artifact.html` (charset + title + viewport + style.css + body do index + todos os js inline) e republicar na mesma URL.
