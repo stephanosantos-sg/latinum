@@ -198,6 +198,12 @@ function changeRate(dir) {
   save();
   document.querySelectorAll(".tts-rate").forEach(el => el.textContent = rateLabel());
   toast(`${dir < 0 ? "🐢" : "🐇"} Velocidade: ${rateLabel()}`);
+  // efeito imediato: a Web Speech não muda o rate de fala em andamento,
+  // então reinicia a frase atual na velocidade nova
+  if (window._ab && speechSynthesis.speaking) {
+    if (window._ab.playing) abSpeakSentence(window._ab.i);
+    else abSpeakSentence0(window._ab.i);
+  }
 }
 function rateLabel() { return (S.rate || 0.85).toFixed(2).replace(/0$/, "") + "×"; }
 function ttsControls(js) {
@@ -264,13 +270,15 @@ function dueWords() {
 
 /* ---------- course structure ---------- */
 function lessonsOf(ch) {
+  // Ordem do livro: primeiro LÊ o capítulo (per se illustrata!),
+  // depois vocabulário, gramática e pensa.
+  const ls = [{ id: `c${ch.num}-l`, name: "Lēctiō", icon: "📖", kind: "lectio" }];
   const chunks = [];
   for (let i = 0; i < ch.vocab.length; i += 9) chunks.push(ch.vocab.slice(i, i + 9));
-  const ls = chunks.map((c, i) => ({ id: `c${ch.num}-v${i}`, name: `Vocābula ${["I", "II", "III", "IV"][i] || i + 1}`, icon: "🃏", kind: "vocab", words: c }));
+  chunks.forEach((c, i) => ls.push({ id: `c${ch.num}-v${i}`, name: `Vocābula ${["I", "II", "III", "IV"][i] || i + 1}`, icon: "🃏", kind: "vocab", words: c }));
   const half = Math.ceil(ch.pensum.length / 2);
   ls.push({ id: `c${ch.num}-g`, name: "Grammatica", icon: "🏺", kind: "pensum", items: ch.pensum.slice(0, half), showGrammar: true });
   ls.push({ id: `c${ch.num}-p`, name: "Pēnsum", icon: "✒️", kind: "pensum", items: ch.pensum.slice(half) });
-  ls.push({ id: `c${ch.num}-l`, name: "Lēctiō", icon: "📖", kind: "lectio" });
   return ls;
 }
 function chapterProgress(ch) {
