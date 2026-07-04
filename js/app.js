@@ -17,7 +17,77 @@ function loadState() {
   try { return Object.assign({}, DEFAULT_STATE, JSON.parse(localStorage.getItem("latinum") || "{}")); }
   catch { return { ...DEFAULT_STATE }; }
 }
-function save() { localStorage.setItem("latinum", JSON.stringify(S)); }
+function save() {
+  S.savedAt = Date.now();
+  localStorage.setItem("latinum", JSON.stringify(S));
+  scheduleCloudPush();
+}
+
+/* ---------- sincronização na nuvem (Firestore — mesmo projeto do Orbita) ---------- */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyA5Mr_PMNfazmPqOeDaqdwWv3yHzEone5Q",
+  authDomain: "orbita-386d6.firebaseapp.com",
+  projectId: "orbita-386d6",
+  storageBucket: "orbita-386d6.firebasestorage.app",
+  messagingSenderId: "558543348252",
+  appId: "1:558543348252:web:e9b79438b31bb9db7435d9"
+};
+let _fbUser = null, _fbDb = null, _pushTimer = null, _syncStatus = "off";
+const cloudAvailable = () => typeof firebase !== "undefined";
+
+function initCloud() {
+  if (!cloudAvailable() || _fbDb) return;
+  firebase.initializeApp(FIREBASE_CONFIG);
+  _fbDb = firebase.firestore();
+  firebase.auth().onAuthStateChanged(user => {
+    _fbUser = user;
+    if (user) { _syncStatus = "on"; cloudPull(); }
+    else _syncStatus = "off";
+    if (document.querySelector("#sync-box")) renderProfile();
+  });
+}
+async function cloudLogin() {
+  if (!cloudAvailable()) return;
+  try {
+    await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());
+  } catch (e) {
+    toast("❌ Login falhou: " + (e.code || e.message));
+  }
+}
+function cloudLogout() {
+  if (cloudAvailable()) firebase.auth().signOut();
+  toast("Desconectado — progresso continua salvo neste navegador");
+}
+async function cloudPull() {
+  if (!_fbUser || !_fbDb) return;
+  try {
+    const doc = await _fbDb.collection("users").doc(_fbUser.uid).get();
+    const cloud = doc.exists ? doc.data().latinum : null;
+    if (cloud && (cloud.savedAt || 0) > (S.savedAt || 0)) {
+      S = Object.assign({}, DEFAULT_STATE, cloud);
+      localStorage.setItem("latinum", JSON.stringify(S));
+      renderStats();
+      toast("☁️ Progresso da nuvem carregado (" + S.xp + " XP)");
+      App.go("profile");
+    } else {
+      cloudPush(); // local é mais novo (ou nuvem vazia): sobe
+    }
+  } catch (e) { console.error("cloudPull:", e); _syncStatus = "error"; }
+}
+async function cloudPush() {
+  if (!_fbUser || !_fbDb) return;
+  try {
+    await _fbDb.collection("users").doc(_fbUser.uid).set({ latinum: JSON.parse(JSON.stringify(S)) }, { merge: true });
+    _syncStatus = "on";
+    const el = document.querySelector("#sync-status");
+    if (el) el.textContent = "☁️ Sincronizado agora há pouco";
+  } catch (e) { console.error("cloudPush:", e); _syncStatus = "error"; }
+}
+function scheduleCloudPush() {
+  if (!_fbUser) return;
+  clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(cloudPush, 3000);
+}
 
 /* ---------- ranks (Cursus Honorum) ---------- */
 const RANKS = [
@@ -774,6 +844,21 @@ function renderProfile() {
   </div>
   <div class="gram-card glass"><h3>Sobre este curso</h3>
     <p>Baseado em <i>Lingua Latina per se Illustrata — Pars I: Familia Romana</i> (Hans H. Ørberg) e nas <i>Fabellae Latinae</i>. Método natural: você aprende latim <b>em latim</b>, com contexto, sem tradução decorada. Capítulos I–VIII disponíveis; a estrutura já aceita os capítulos IX–XXXV.</p></div>
+  <div class="gram-card glass" id="sync-box"><h3>☁️ Sincronização automática</h3>
+    ${!cloudAvailable()
+      ? `<p>Indisponível nesta versão (bloqueio de rede). Use o link <b>stephanosantos-sg.github.io/latinum</b> pra sincronizar.</p>`
+      : _fbUser
+        ? `<p>Conectado como <b>${esc(_fbUser.email || "")}</b>. O progresso sobe pra nuvem sozinho a cada mudança e desce em qualquer aparelho logado.</p>
+           <p class="ex-hint" id="sync-status" style="margin-top:6px">${_syncStatus === "error" ? "⚠️ Erro na última sincronização" : "☁️ Sincronizado"}</p>
+           <div class="lesson-row" style="margin-top:10px">
+             <div class="lesson-chip" onclick="cloudPull()"><span class="lc-icon">⬇️</span>Puxar da nuvem</div>
+             <div class="lesson-chip" onclick="cloudPush().then(()=>toast('☁️ Enviado!'))"><span class="lc-icon">⬆️</span>Enviar agora</div>
+             <div class="lesson-chip" onclick="cloudLogout()"><span class="lc-icon">🚪</span>Sair</div>
+           </div>`
+        : `<p>Entre com sua conta Google (a mesma do Orbita) e o progresso sincroniza sozinho entre celular e computador.</p>
+           <button class="btn-main" style="margin-top:10px" onclick="cloudLogin()">Entrar com Google</button>`
+    }
+  </div>
   <div class="gram-card glass"><h3>💾 Salvar / transferir progresso</h3>
     <p>Seu progresso fica salvo neste navegador. Pra ter backup ou levar pra outro aparelho (celular ↔ computador), exporte aqui e importe lá.</p>
     <div class="lesson-row" style="margin-top:12px">
@@ -846,7 +931,7 @@ function importProgress() {
   }
 }
 function resetProgress() {
-  if (!confirm("Zerar todo o progresso (XP, streak, lições, SRS)?")) return;
+  if (!confirm("Zerar todo o progresso (XP, streak, lições, SRS)?" + (_fbUser ? " Isso também zera a cópia na nuvem." : ""))) return;
   S = { ...DEFAULT_STATE, lessons: {}, srs: {}, words: {}, readFab: {} };
   save(); renderStats(); App.go("home");
 }
@@ -861,5 +946,6 @@ function toast(msg) {
 }
 
 /* ---------- boot ---------- */
+initCloud();
 renderStats();
 renderHome();
