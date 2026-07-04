@@ -5,7 +5,7 @@ const CORE = [
   "css/style.css",
   "js/course.js", "js/fabellae.js", "js/course2.js", "js/course3.js",
   "js/course4a.js", "js/course4b.js", "js/course4c.js", "js/course4d.js",
-  "js/roma1.js", "js/fabellae2.js", "js/colloquia.js", "js/morph.js", "js/app.js"
+  "js/roma1.js", "js/roma2.js", "js/roma3.js", "js/roma4.js", "js/fabellae2.js", "js/colloquia.js", "js/morph.js", "js/app.js"
 ];
 
 self.addEventListener("install", e => {

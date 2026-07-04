@@ -449,7 +449,7 @@ function renderHome() {
     <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
     <div class="lib-sub">os casos explicados do zero (dativo? ablativo?) · tempos · modos · tabelas</div></div>
     <div>→</div></div>`;
-  if (liber === 2) h += `<p class="page-sub" style="text-align:center;margin-top:20px">📗 Rōma Aeterna: capítulos XLI–LVI chegam nos próximos lotes.</p>`;
+  if (liber === 2) h += `<p class="page-sub" style="text-align:center;margin-top:20px">🏛️ O curso Ørberg completo: 56 capítulos, do "Rōma in Italiā est" ao Somnium Scīpiōnis. Macte virtūte estō!</p>`;
   $("#view").innerHTML = h;
 }
 function toggleUnit(num) {
@@ -500,7 +500,7 @@ function buildVocabQueue(ch, words) {
   // um exercício de pares no meio
   d.splice(Math.floor(d.length / 2), 0, { t: "pairs", words: shuffle(words).slice(0, 5) });
   // duas digitações no final (só palavras simples, sem "a / b" ou "a, b")
-  const typable = words.filter(v => !/[\/,…()]/.test(v.la));
+  const typable = words.filter(v => !/[\/,…() ]/.test(v.la));
   shuffle(typable).slice(0, 2).forEach(v => d.push({ t: "typev", v }));
   return q.concat(d);
 }
