@@ -349,6 +349,42 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
   border-radius: 99px; padding: 1px 6px; font-weight: 800;
 }
 
+/* ============ MORFOLOGIA ============ */
+.g-morph {
+  margin: 6px 0; padding: 6px 10px;
+  background: var(--gold-soft); border: 1px solid rgba(242,193,78,.35);
+  border-radius: 10px; font-size: .82rem;
+}
+.g-table-btn {
+  border: 1px solid var(--glass-border); background: var(--glass-strong);
+  color: var(--text); border-radius: 8px; padding: 2px 8px;
+  font-size: .74rem; cursor: pointer; margin-left: 6px;
+}
+.paradigm-ov {
+  position: fixed; inset: 0; z-index: 300;
+  background: rgba(10, 5, 25, .6);
+  backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 18px;
+}
+.paradigm-card {
+  border-radius: var(--radius); padding: 20px;
+  max-width: 420px; width: 100%;
+  max-height: 85vh; overflow-y: auto;
+  background: rgba(26, 16, 51, .95);
+}
+.paradigm-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: .92rem; }
+.paradigm-table th { color: var(--text-dim); font-weight: 600; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; padding: 6px 8px; text-align: left; }
+.paradigm-table td { padding: 7px 8px; border-bottom: 1px solid var(--glass-border); font-family: Georgia, serif; cursor: pointer; border-radius: 6px; }
+.paradigm-table td:hover { background: rgba(255,255,255,.1); }
+.paradigm-table td.hit { background: var(--gold-soft); color: var(--gold); font-weight: 700; box-shadow: inset 0 0 0 1px rgba(242,193,78,.5); }
+.hm-table { border-collapse: collapse; font-size: .72rem; }
+.hm-table th { color: var(--text-dim); font-weight: 600; padding: 3px 6px; text-align: left; white-space: nowrap; }
+.hm-table td.hm { width: 30px; height: 22px; border-radius: 6px; border: 2px solid var(--bg2); background: rgba(255,255,255,.08); }
+.hm-table td.hm-g { background: var(--green); }
+.hm-table td.hm-y { background: var(--gold); }
+.hm-table td.hm-r { background: var(--red); }
+
 /* toast */
 .toast {
   position: fixed; left: 50%; bottom: calc(var(--nav-h) + 18px);

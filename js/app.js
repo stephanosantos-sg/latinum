@@ -11,7 +11,7 @@ const esc = s => (s || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
 /* ---------- state ---------- */
-const DEFAULT_STATE = { xp: 0, streak: 0, lastDay: null, lessons: {}, srs: {}, words: {}, readFab: {}, rate: 0.85 };
+const DEFAULT_STATE = { xp: 0, streak: 0, lastDay: null, lessons: {}, srs: {}, words: {}, readFab: {}, rate: 0.85, gram: {} };
 let S = loadState();
 function loadState() {
   try { return Object.assign({}, DEFAULT_STATE, JSON.parse(localStorage.getItem("latinum") || "{}")); }
@@ -126,10 +126,30 @@ DICT.forEach(en => {
   const head = norm(en.la.split(/[,\s]/)[0]);
   if (head.length >= 3 && !en.fn) DICT_STEMS.push({ stem: stemOf(head), entry: en });
 });
+/* índice de TODAS as formas declinadas (gerado pelo motor de morfologia) */
+const FORM_INDEX = {};
+if (typeof nounClass === "function") {
+  DICT.forEach(en => {
+    if (en.fn) return;
+    try {
+      const cls = nounClass(en);
+      if (!cls) return;
+      const t = declineNoun(cls);
+      ["sg", "pl"].forEach(num => (t[num] || []).forEach(f => {
+        if (f) { const k = norm(f); if (k.length > 1 && !FORM_INDEX[k]) FORM_INDEX[k] = en; }
+      }));
+    } catch (e) { /* ignora entradas que o motor não parseia */ }
+  });
+}
+
 function lookup(word) {
   const n = norm(word);
   if (!n) return null;
-  if (DICT_INDEX[n]) return DICT_INDEX[n];
+  const exact = DICT_INDEX[n];
+  // forma declinada real ganha de glosa funcional manual (análise mais rica)
+  if (exact && !(exact.fn && FORM_INDEX[n])) return exact;
+  if (FORM_INDEX[n]) return FORM_INDEX[n];
+  if (exact) return exact;
   // try stripping enclitic -que / -ne
   for (const enc of ["que", "ne"]) {
     if (n.endsWith(enc) && DICT_INDEX[n.slice(0, -enc.length)]) return DICT_INDEX[n.slice(0, -enc.length)];
@@ -307,6 +327,11 @@ function renderHome() {
     h += `<div class="lesson-chip" onclick="showGrammar(${ch.num})"><span class="lc-icon">🏛️</span>Gramática<span class="lc-status">ref.</span></div>`;
     h += `</div></section>`;
   });
+  h += `<div class="lib-item glass" onclick="showAppendix()" style="margin-top:6px">
+    <div class="lib-icon">📖</div>
+    <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
+    <div class="lib-sub">os casos explicados do zero (dativo? ablativo?) · tempos · modos · tabelas</div></div>
+    <div>→</div></div>`;
   h += `<p class="page-sub" style="text-align:center;margin-top:20px">🏛️ Familia Rōmāna completo — os 35 capítulos. Fīnis corōnat opus!</p>`;
   $("#view").innerHTML = h;
 }
@@ -710,9 +735,31 @@ function showGloss(el) {
   const entry = lookup(word);
   const n = norm(word);
   const pop = $("#gloss-pop");
+  let morphHtml = "";
+  if (entry) {
+    try {
+      const an = analyzeForm(word, entry);
+      if (an && an[0]) {
+        const a = an[0];
+        if (a.kind === "noun" && a.case) {
+          const alts = an.filter(x => x.case).map(x => `${x.case} ${x.num === "sg" ? "sing." : "pl."}`).join(" ou ");
+          morphHtml = `<div class="g-morph">🏛️ <b>${alts}</b> · ${DECL_LABEL[a.cls.decl]}
+            <button class="g-table-btn" onclick="showParadigm('${esc(word)}')">📊 tabela</button></div>`;
+          window._paradigm = { entry, an };
+        } else if (a.kind === "noun") {
+          morphHtml = `<div class="g-morph">🏛️ ${DECL_LABEL[a.cls.decl]}
+            <button class="g-table-btn" onclick="showParadigm('${esc(word)}')">📊 tabela</button></div>`;
+          window._paradigm = { entry, an };
+        } else if (a.kind === "verb" && a.guess) {
+          morphHtml = `<div class="g-morph">⚙️ provável: <b>${a.guess}</b></div>`;
+        }
+      }
+    } catch (e) { /* análise é bônus, nunca quebra o popup */ }
+  }
   pop.innerHTML = `<div class="g-word">${esc(word)} <button class="speak-btn" style="margin:0;padding:2px 8px" onclick="speak('${esc(word)}')">🔊</button></div>
     ${entry ? `<div class="g-forms">${esc(entry.la)}${entry.forms ? " · " + esc(entry.forms) : ""}</div>
     <div class="g-pt">${esc(entry.pt)}</div>
+    ${morphHtml}
     ${entry.ex ? `<div class="g-note">"${esc(entry.ex)}"</div>` : ""}`
       : `<div class="g-pt">🤔 ainda não está no glossário</div><div class="g-note">Palavra de um capítulo mais à frente — ou um nome próprio.</div>`}
     <div class="g-actions">
@@ -744,6 +791,147 @@ function setWord(n, st) {
   });
 }
 function hideGloss() { const p = $("#gloss-pop"); if (p) p.hidden = true; }
+
+/* ---------- tabela de paradigma (overlay) ---------- */
+function showParadigm(word) {
+  const P = window._paradigm;
+  if (!P) return;
+  hideGloss();
+  const a = P.an[0];
+  const t = a.table || declineNoun(a.cls);
+  const hits = new Set(P.an.filter(x => x.case).map(x => x.num + x.caseIdx));
+  let rows = "";
+  for (let i = 0; i < 5; i++) {
+    rows += `<tr><th>${CASE_ABBR[i]}</th>
+      <td class="la ${hits.has("sg" + i) ? "hit" : ""}" onclick="speak(this.textContent)">${t.sg ? (t.sg[i] || "—") : "—"}</td>
+      <td class="la ${hits.has("pl" + i) ? "hit" : ""}" onclick="speak(this.textContent)">${t.pl[i] || "—"}</td></tr>`;
+  }
+  let ov = $("#paradigm-ov");
+  if (!ov) { ov = document.createElement("div"); ov.id = "paradigm-ov"; ov.className = "paradigm-ov"; document.body.appendChild(ov); }
+  ov.innerHTML = `<div class="paradigm-card glass">
+    <div class="g-word">${esc(P.entry.la)} <span class="g-forms">${esc(P.entry.forms || "")}</span></div>
+    <div class="g-pt">${esc(P.entry.pt)} · ${DECL_LABEL[a.cls.decl]}</div>
+    <table class="paradigm-table"><tr><th></th><th>singular</th><th>plural</th></tr>${rows}</table>
+    <p class="ex-hint">👆 toca numa forma pra ouvir · a célula dourada é a forma do texto</p>
+    <div style="display:flex;gap:8px">
+      <button class="btn-main btn-ghost" style="margin-top:8px" onclick="showAppendix()">📖 O que é cada caso?</button>
+      <button class="btn-main" style="margin-top:8px" onclick="closeParadigm()">Fechar</button>
+    </div>
+  </div>`;
+  ov.hidden = false;
+  ov.onclick = e => { if (e.target === ov) closeParadigm(); };
+}
+function closeParadigm() { const ov = $("#paradigm-ov"); if (ov) ov.hidden = true; }
+
+/* ---------- Appendix Grammaticus ---------- */
+function showAppendix() {
+  closeParadigm();
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.remove("active"));
+  let h = `<div class="lesson-top"><button class="btn-quit" onclick="App.go('home')">←</button>
+    <h1 class="page-title" style="margin:0">Appendix Grammaticus</h1></div>
+  <p class="page-sub">Os casos e o verbo latino explicados do zero — pra quem faz tempo que não vê gramática. Consulte sempre que travar.</p>`;
+  APPENDIX.forEach(a => { h += `<div class="gram-card glass"><h3>${a.icon} ${a.title}</h3><p>${a.body}</p></div>`; });
+  h += `<div class="gram-card glass"><h3>🏛️ Modelos de conjugação</h3><p>As 4 conjugações + esse, em todos os tempos. Toca numa forma pra ouvir.</p>
+    <div class="lesson-row" style="margin-top:10px">${VERB_MODELS.map(m =>
+      `<div class="lesson-chip" onclick="showConjugation('${m.id}')"><span class="lc-icon">⚙️</span><span class="la">${m.inf}</span><span class="lc-status">${m.conj.split(" ")[0]}</span></div>`).join("")}
+    <div class="lesson-chip" onclick="showConjugation('esse')"><span class="lc-icon">⭐</span><span class="la">esse</span><span class="lc-status">irr.</span></div></div>
+    <div id="conj-box"></div></div>
+  <button class="btn-main btn-ghost" onclick="App.go('home')">Voltar ao Cursus</button>`;
+  $("#view").innerHTML = h;
+  window.scrollTo(0, 0);
+}
+function showConjugation(id) {
+  const box = $("#conj-box");
+  const table = id === "esse" ? ESSE_TABLE : conjTable(VERB_MODELS.find(m => m.id === id));
+  const name = id === "esse" ? "esse (ser/estar)" : (m => `${m.inf} (${m.pt})`)(VERB_MODELS.find(m => m.id === id));
+  let h = `<h3 style="margin-top:14px">${name}</h3><div style="overflow-x:auto"><table class="paradigm-table"><tr><th></th>${PERSONS.map(p => `<th>${p}</th>`).join("")}</tr>`;
+  Object.entries(table).forEach(([tense, forms]) => {
+    h += `<tr><th>${tense}</th>${forms.map(f => `<td class="la" onclick="speak(this.textContent)">${f}</td>`).join("")}</tr>`;
+  });
+  h += `</table></div>`;
+  box.innerHTML = h;
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/* ---------- Declinā! (drill adaptativo) ---------- */
+let G = null;
+function startDeclina() {
+  G = { i: 0, total: 12, ok: 0, xp: 0 };
+  nextGram();
+}
+function nextGram() {
+  if (!G || G.i >= G.total) return finishGram();
+  const ex = makeGramExercise();
+  G.cur = ex;
+  const pct = Math.round(G.i / G.total * 100);
+  $("#view").innerHTML = `<div class="lesson-top">
+    <button class="btn-quit" onclick="G=null;App.go('review')">✕</button>
+    <div class="progressbar"><div style="width:${pct}%"></div></div>
+    <div class="combo">${G.ok}✓</div></div>
+  <div class="exercise glass"><div class="ex-kind">Declinā! ${ex.kind === "v" ? "· conjugação" : "· " + (ex.hint || "")}</div>
+    <div class="ex-prompt">${ex.prompt}</div>
+    <div class="options">${ex.options.map((o, i) => `<button class="opt" onclick="checkGram(${i})"><span class="la">${esc(o)}</span></button>`).join("")}</div>
+    <div id="feedback" class="feedback"><div class="fb-text" id="fb-text"></div></div>
+    <button id="btn-continue" class="btn-main" onclick="nextGram()" style="display:none">Continuar</button></div>`;
+  window.scrollTo(0, 0);
+}
+function checkGram(i) {
+  const ex = G.cur;
+  const ok = ex.options[i] === ex.answer;
+  document.querySelectorAll(".opt").forEach((b, j) => {
+    b.disabled = true;
+    if (ex.options[j] === ex.answer) b.classList.add("correct");
+    else if (j === i && !ok) b.classList.add("wrong");
+  });
+  gramRecord(ex.key, ok);
+  const fb = $("#feedback");
+  fb.classList.add("show", ok ? "ok" : "bad");
+  $("#fb-text").innerHTML = ok ? `✅ <b>Rēctē!</b> +3 XP` : `❌ <b>Nōn rēctē.</b><small>Resposta: ${esc(ex.answer)}</small>`;
+  if (ok) { G.ok++; addXP(3); G.xp += 3; speak(ex.answer); }
+  G.i++;
+  $("#btn-continue").style.display = "";
+}
+function finishGram() {
+  bumpStreak(); save(); renderStats();
+  const acc = G.total ? Math.round(G.ok / G.total * 100) : 0;
+  $("#view").innerHTML = `<div class="lesson-end glass">
+    <div class="big">${acc >= 90 ? "🏆" : acc >= 70 ? "🎉" : "💪"}</div>
+    <h2>${acc >= 90 ? "Optimē dēclīnās!" : acc >= 70 ? "Bene!" : "Perge exercēre!"}</h2>
+    <div class="end-stats">
+      <div class="end-stat"><b>+${G.xp}</b><span>XP</span></div>
+      <div class="end-stat"><b>${acc}%</b><span>acertos</span></div></div>
+    <button class="btn-main" onclick="startDeclina()">Mais uma rodada</button>
+    <button class="btn-main btn-ghost" style="margin-top:8px" onclick="App.go('review')">Voltar</button></div>`;
+  G = null;
+}
+function heatmapHTML() {
+  const noun = [["d1", "1ª"], ["d2m", "2ª"], ["d2n", "2ª n."], ["d3", "3ª"], ["d3i", "3ª -i"], ["d4", "4ª"], ["d5", "5ª"]];
+  const cell = k => {
+    const acc = gramAcc(k);
+    const cls = acc === null ? "" : acc >= .85 ? "hm-g" : acc >= .6 ? "hm-y" : "hm-r";
+    return `<td class="hm ${cls}" title="${acc === null ? "sem dados" : Math.round(acc * 100) + "%"}"></td>`;
+  };
+  let h = `<table class="hm-table"><tr><th></th>${CASE_ABBR.map(c => `<th>${c}</th>`).join("")}</tr>`;
+  noun.forEach(([d, lbl]) => {
+    h += `<tr><th>${lbl}</th>${CASES.map(c => {
+      // agrega sg+pl
+      const k1 = gramKey("n", d, c + "sg"), k2 = gramKey("n", d, c + "pl");
+      const s1 = gramStat(k1), s2 = gramStat(k2);
+      const n = s1.ok + s1.bad + s2.ok + s2.bad;
+      const acc = n === 0 ? null : (s1.ok + s2.ok) / n;
+      const cls = acc === null ? "" : acc >= .85 ? "hm-g" : acc >= .6 ? "hm-y" : "hm-r";
+      return `<td class="hm ${cls}" title="${acc === null ? "—" : Math.round(acc * 100) + "%"}"></td>`;
+    }).join("")}</tr>`;
+  });
+  h += `</table>`;
+  const tenses = ["presente", "imperfeito", "futuro", "perfeito", "subj. presente"];
+  h += `<table class="hm-table" style="margin-top:8px"><tr><th></th>${tenses.map(t => `<th>${t.replace("subj. ", "subj.")}</th>`).join("")}</tr>`;
+  ["1ª (-āre)", "2ª (-ēre)", "3ª (-ere)", "4ª (-īre)"].forEach(cj => {
+    h += `<tr><th>${cj.split(" ")[0]}</th>${tenses.map(t => cell(gramKey("v", cj, t))).join("")}</tr>`;
+  });
+  h += `</table>`;
+  return h;
+}
 document.addEventListener("click", e => { if (!e.target.closest("#gloss-pop") && !e.target.closest(".w")) hideGloss(); });
 
 /* ============================================================
@@ -827,12 +1015,32 @@ function finishFabella(id) {
    REVIEW (SRS)
    ============================================================ */
 function renderReview() {
+  const due = dueWords().length;
+  $("#view").innerHTML = `<h1 class="page-title">Repetītiō</h1>
+  <p class="page-sub">Revisão de vocabulário + ginásio de gramática adaptativo.</p>
+  <div class="lib-item glass" onclick="startSrsReview()">
+    <div class="lib-icon">🔁</div>
+    <div class="lib-info"><div class="lib-title">Repetītiō verbōrum</div>
+    <div class="lib-sub">${due === 0 ? "nada vencido agora — volte amanhã" : due + " palavra" + (due > 1 ? "s" : "") + " pra revisar (SRS)"}</div></div>
+    <div>${due > 0 ? "→" : "🌿"}</div></div>
+  <div class="lib-item glass" onclick="startDeclina()">
+    <div class="lib-icon">🏛️</div>
+    <div class="lib-info"><div class="lib-title">Declinā!</div>
+    <div class="lib-sub">drill infinito de declinação e conjugação — foca nas suas células fracas</div></div>
+    <div>→</div></div>
+  <div class="lib-item glass" onclick="showAppendix()">
+    <div class="lib-icon">📖</div>
+    <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
+    <div class="lib-sub">o que é cada caso (dativo, ablativo…), tempos, modos e as tabelas completas</div></div>
+    <div>→</div></div>
+  <div class="gram-card glass" style="margin-top:16px"><h3>🗺️ Seu mapa de domínio</h3>
+    <p class="ex-hint" style="margin-bottom:8px">Declinações × casos e conjugações × tempos, pintados pelo seu desempenho no Declinā!. <span style="color:var(--green)">■</span> ≥85% · <span style="color:#f2c14e">■</span> 60-84% · <span style="color:var(--red)">■</span> &lt;60% · cinza = sem dados.</p>
+    <div style="overflow-x:auto">${heatmapHTML()}</div></div>`;
+}
+function startSrsReview() {
   const due = dueWords();
   if (due.length === 0) {
-    $("#view").innerHTML = `<h1 class="page-title">Repetītiō</h1>
-    <div class="lesson-end glass"><div class="big">🌿</div><h2>Nihil repetendum!</h2>
-    <p style="color:var(--text-dim)">Nenhuma palavra pra revisar agora. Complete lições de vocabulário pra alimentar a revisão espaçada.</p>
-    <button class="btn-main" onclick="App.go('home')">Ir ao Cursus</button></div>`;
+    toast("🌿 Nihil repetendum — nenhuma palavra vencida agora");
     return;
   }
   const batch = shuffle(due).slice(0, 12);
