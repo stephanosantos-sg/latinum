@@ -386,6 +386,7 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
   color: var(--text); border-radius: 8px; padding: 2px 8px;
   font-size: .74rem; cursor: pointer; margin-left: 6px;
 }
+.paradigm-ov[hidden] { display: none !important; }
 .paradigm-ov {
   position: fixed; inset: 0; z-index: 300;
   background: rgba(10, 5, 25, .6);

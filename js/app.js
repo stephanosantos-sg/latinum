@@ -1596,6 +1596,12 @@ document.addEventListener("keydown", e => {
   }
   if (e.key === "ArrowLeft" && typeof L !== "undefined" && L && L.queue[L.idx] && L.queue[L.idx].t === "flash") { flashPrev(); e.preventDefault(); return; }
   if (e.key === "ArrowRight" && typeof L !== "undefined" && L && L.queue[L.idx] && L.queue[L.idx].t === "flash") { flashNext(); e.preventDefault(); return; }
+  if (e.key === "Escape") {
+    const ov = $("#paradigm-ov");
+    if (ov && !ov.hidden) { closeParadigm(); e.preventDefault(); return; }
+    hideGloss();
+    return;
+  }
   if (e.key === " " && window._ab) { abToggle(); e.preventDefault(); }
 });
 
