@@ -387,6 +387,8 @@ function renderHome() {
       <button class="btn-main btn-ghost" style="margin-top:10px" onclick="S.iosHintOff=true;save();renderHome()">Entendi, esconder</button></div>`;
   }
   COURSE.forEach(ch => {
+    if (ch.num === 1) h += `<h2 class="lib-section">📕 LIBER I — Familia Rōmāna <small>caps. I–XXXV</small></h2>`;
+    if (ch.num === 36) h += `<h2 class="lib-section">📗 LIBER II — Rōma Aeterna <small>caps. XXXVI–LVI · prosa literária</small></h2>`;
     const unlocked = chapterUnlocked(ch);
     const pr = chapterProgress(ch);
     const ls = lessonsOf(ch);
@@ -418,7 +420,7 @@ function renderHome() {
     <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
     <div class="lib-sub">os casos explicados do zero (dativo? ablativo?) · tempos · modos · tabelas</div></div>
     <div>→</div></div>`;
-  h += `<p class="page-sub" style="text-align:center;margin-top:20px">🏛️ Familia Rōmāna completo — os 35 capítulos. Fīnis corōnat opus!</p>`;
+  h += `<p class="page-sub" style="text-align:center;margin-top:20px">📗 Rōma Aeterna: capítulos XLI–LVI chegam nos próximos lotes.</p>`;
   $("#view").innerHTML = h;
 }
 function toggleUnit(num) {
