@@ -66,6 +66,19 @@ body::before {
 .stat { display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: .95rem; }
 .stat-icon { font-size: 1.05rem; }
 .stat.rank { background: var(--gold-soft); border: 1px solid rgba(242,193,78,.4); color: var(--gold); padding: 3px 10px; border-radius: 999px; font-size: .78rem; font-family: Georgia, serif; }
+.sync-chip {
+  border: 1px solid var(--glass-border); background: var(--glass-strong);
+  color: var(--text); border-radius: 999px; padding: 4px 10px;
+  font-size: .74rem; font-weight: 700; cursor: pointer;
+}
+.sync-chip.on { border-color: rgba(88,214,141,.5); color: var(--green); background: rgba(88,214,141,.12); }
+.srs-stats { font-size: .88rem; margin-bottom: 12px; color: var(--text); }
+.srs-stats b { color: var(--gold); }
+.forecast { display: flex; gap: 8px; align-items: flex-end; }
+.fc-col { flex: 1; text-align: center; }
+.fc-bar { background: linear-gradient(180deg, var(--gold), #e8a838); border-radius: 6px 6px 2px 2px; margin: 0 auto; width: 70%; }
+.fc-n { font-size: .74rem; font-weight: 700; margin-top: 3px; }
+.fc-l { font-size: .64rem; color: var(--text-dim); }
 
 /* ============ MAIN ============ */
 main {

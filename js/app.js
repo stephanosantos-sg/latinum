@@ -43,6 +43,7 @@ function initCloud() {
     _fbUser = user;
     if (user) { _syncStatus = "on"; cloudPull(); }
     else _syncStatus = "off";
+    renderSyncChip();
     if (document.querySelector("#sync-box")) renderProfile();
   });
 }
@@ -87,6 +88,26 @@ function scheduleCloudPush() {
   if (!_fbUser) return;
   clearTimeout(_pushTimer);
   _pushTimer = setTimeout(cloudPush, 3000);
+}
+function renderSyncChip() {
+  const chip = document.getElementById("sync-chip");
+  if (!chip) return;
+  if (!cloudAvailable()) { chip.hidden = true; return; }
+  chip.hidden = false;
+  if (_fbUser) {
+    chip.textContent = "☁️✓";
+    chip.classList.add("on");
+    chip.title = "Sincronizado como " + (_fbUser.email || "") + " — toque pra ver";
+  } else {
+    chip.textContent = "☁️ entrar";
+    chip.classList.remove("on");
+    chip.title = "Entre com Google pra sincronizar o progresso entre aparelhos";
+  }
+}
+function syncChipTap() {
+  if (!cloudAvailable()) return;
+  if (_fbUser) App.go("profile");
+  else cloudLogin();
 }
 
 /* ---------- ranks (Cursus Honorum) ---------- */
@@ -238,25 +259,64 @@ function renderStats() {
   $("#stat-xp").textContent = S.xp;
   $("#stat-words").textContent = Object.values(S.words).filter(v => v === 2).length + Object.keys(S.srs).filter(k => (S.srs[k].reps || 0) >= 3).length;
   $("#stat-rank").textContent = rankFor(S.xp).name;
-  const due = dueWords().length;
+  const due = dueWords().length + dueSents().length;
   const b = $("#review-badge");
   b.hidden = due === 0;
   b.textContent = due;
+  renderSyncChip();
 }
 
-/* ---------- SRS (SM-2 lite) ---------- */
-const INTERVALS = [1, 2, 4, 8, 16, 32, 64];
+/* ---------- SRS: SM-2 (SuperMemo-2, o algoritmo do Anki) ----------
+   Wozniak 1987; curva do esquecimento de Ebbinghaus; spacing effect
+   (Cepeda et al. 2006). Cada item tem um fator de facilidade (EF) que
+   estica o intervalo a cada acerto e encolhe com os erros.            */
+const INTERVALS = [1, 2, 4, 8, 16, 32, 64]; // legado (migração)
+function sm2Update(it, ok, typed) {
+  // migra itens antigos (lvl) pro SM-2
+  if (it.ef === undefined) { it.ef = 2.5; it.interval = INTERVALS[it.lvl || 0] || 1; it.streak = it.lvl || 0; }
+  const q = ok ? (typed ? 5 : 4) : 2; // qualidade 0-5 (implícita: acerto digitado > acerto mcq > erro)
+  if (q < 3) {
+    it.streak = 0;
+    it.interval = 1; // errou: volta pra amanhã
+  } else {
+    it.streak = (it.streak || 0) + 1;
+    if (it.streak === 1) it.interval = 1;
+    else if (it.streak === 2) it.interval = 6;
+    else it.interval = Math.round(it.interval * it.ef);
+  }
+  // ajuste do fator de facilidade (fórmula original do SM-2)
+  it.ef = Math.max(1.3, it.ef + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
+  it.reps = (it.reps || 0) + (ok ? 1 : 0);
+  const d = new Date(); d.setDate(d.getDate() + Math.min(it.interval, 365));
+  it.due = d.toISOString().slice(0, 10);
+}
 function srsKey(v) { return norm(v.la) + "|" + v.cap; }
 function srsAdd(v) {
   const k = srsKey(v);
-  if (!S.srs[k]) S.srs[k] = { la: v.la, cap: v.cap, lvl: 0, due: todayKey(), reps: 0 };
+  if (!S.srs[k]) S.srs[k] = { la: v.la, cap: v.cap, ef: 2.5, interval: 0, streak: 0, due: todayKey(), reps: 0 };
 }
-function srsAnswer(k, ok) {
+function srsAnswer(k, ok, typed) {
   const it = S.srs[k]; if (!it) return;
-  if (ok) { it.lvl = Math.min(it.lvl + 1, INTERVALS.length - 1); it.reps = (it.reps || 0) + 1; }
-  else it.lvl = Math.max(0, it.lvl - 2);
-  const d = new Date(); d.setDate(d.getDate() + INTERVALS[it.lvl]);
-  it.due = d.toISOString().slice(0, 10);
+  sm2Update(it, ok, typed);
+  save();
+}
+
+/* ---------- cards de frase (sentence mining) ---------- */
+function sentAdd(word, sent, src) {
+  if (!S.sents) S.sents = {};
+  const id = norm(word) + "|" + norm(sent).slice(0, 24);
+  if (S.sents[id]) { toast("Essa frase já está na revisão"); return; }
+  S.sents[id] = { word, sent, src, ef: 2.5, interval: 0, streak: 0, due: todayKey(), reps: 0 };
+  save(); renderStats();
+  toast("➕ Frase adicionada à Repetītiō!");
+}
+function dueSents() {
+  const t = todayKey();
+  return Object.entries(S.sents || {}).filter(([, it]) => it.due <= t);
+}
+function sentAnswer(id, ok, typed) {
+  const it = (S.sents || {})[id]; if (!it) return;
+  sm2Update(it, ok, typed);
   save();
 }
 function dueWords() {
@@ -317,6 +377,15 @@ const App = {
 function renderHome() {
   let h = `<h1 class="page-title">Cursus Latīnus</h1>
   <p class="page-sub">Familia Rōmāna · Lingua Latīna per sē Illūstrāta — capítulo por capítulo, per sē: só latim, sem decoreba.</p>`;
+  // dica de instalação no iOS (some depois de dispensada ou instalada)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const standalone = navigator.standalone || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  if (isIOS && !standalone && !S.iosHintOff) {
+    h += `<div class="gram-card glass" style="border-color:rgba(242,193,78,.4)">
+      <h3>📲 Instale como app no iPhone</h3>
+      <p>No <b>Safari</b>: toque em <b>Compartilhar</b> (□↑) → <b>Adicionar à Tela de Início</b>. Vira um app de verdade: ícone, tela cheia e funciona offline.</p>
+      <button class="btn-main btn-ghost" style="margin-top:10px" onclick="S.iosHintOff=true;save();renderHome()">Entendi, esconder</button></div>`;
+  }
   COURSE.forEach(ch => {
     const unlocked = chapterUnlocked(ch);
     const pr = chapterProgress(ch);
@@ -661,7 +730,8 @@ function feedback(ok, note, ex) {
     const clone = { ...ex }; delete clone._answer; delete clone._opts; delete clone._answers; delete clone._target;
     L.queue.push(clone); L.total++;
   }
-  if (ex._srsKey) srsAnswer(ex._srsKey, ok);
+  if (ex._srsKey) srsAnswer(ex._srsKey, ok, ex.t === "typev" || ex.t === "type" || ex.t === "gap");
+  if (ex._sentKey) sentAnswer(ex._sentKey, ok, true);
 }
 function nextExercise() { L.idx++; renderExercise(); }
 
@@ -984,7 +1054,9 @@ function showGloss(el) {
       <button onclick="setWord('${n}',0)">🔵 Nova</button>
       <button onclick="setWord('${n}',1)">🟡 Aprendendo</button>
       <button onclick="setWord('${n}',2)">✅ Sei</button>
-    </div>`;
+    </div>
+    ${el.closest(".snt") ? `<div class="g-actions"><button onclick="sentAdd(window._glossCtx.w, window._glossCtx.s, window._glossCtx.src);hideGloss()">➕ frase inteira na Repetītiō</button></div>` : ""}`;
+  window._glossCtx = { w: word, s: (el.closest(".snt") || {}).textContent || "", src: (window._paSource || {}).title || "" };
   pop.hidden = false;
   const r = el.getBoundingClientRect();
   const pw = 300;
@@ -1277,15 +1349,30 @@ function finishFabella(id) {
 /* ============================================================
    REVIEW (SRS)
    ============================================================ */
+function srsForecast() {
+  const all = [...Object.values(S.srs || {}), ...Object.values(S.sents || {})];
+  const days = [];
+  for (let d = 0; d < 7; d++) {
+    const dt = new Date(Date.now() + d * 864e5).toISOString().slice(0, 10);
+    days.push({ label: d === 0 ? "hoje" : d === 1 ? "amanhã" : "+" + d, n: all.filter(it => d === 0 ? it.due <= dt : it.due === dt).length });
+  }
+  const novas = all.filter(it => (it.interval || 0) === 0).length;
+  const aprendendo = all.filter(it => (it.interval || 0) > 0 && it.interval < 21).length;
+  const maduras = all.filter(it => (it.interval || 0) >= 21).length;
+  return { days, novas, aprendendo, maduras, total: all.length };
+}
 function renderReview() {
   const due = dueWords().length;
+  const dSents = dueSents().length;
+  const f = srsForecast();
+  const maxDay = Math.max(1, ...f.days.map(d => d.n));
   $("#view").innerHTML = `<h1 class="page-title">Repetītiō</h1>
-  <p class="page-sub">Revisão de vocabulário + ginásio de gramática adaptativo.</p>
+  <p class="page-sub">Revisão espaçada (algoritmo SM-2, o mesmo do Anki) + ginásio de gramática adaptativo.</p>
   <div class="lib-item glass" onclick="startSrsReview()">
     <div class="lib-icon">🔁</div>
     <div class="lib-info"><div class="lib-title">Repetītiō verbōrum</div>
-    <div class="lib-sub">${due === 0 ? "nada vencido agora — volte amanhã" : due + " palavra" + (due > 1 ? "s" : "") + " pra revisar (SRS)"}</div></div>
-    <div>${due > 0 ? "→" : "🌿"}</div></div>
+    <div class="lib-sub">${due + dSents === 0 ? "nada vencido agora — volte amanhã" : due + " palavra" + (due !== 1 ? "s" : "") + (dSents ? " + " + dSents + " frase" + (dSents !== 1 ? "s" : "") : "") + " pra revisar"}</div></div>
+    <div>${due + dSents > 0 ? "→" : "🌿"}</div></div>
   <div class="lib-item glass" onclick="startDeclina()">
     <div class="lib-icon">🏛️</div>
     <div class="lib-info"><div class="lib-title">Declinā!</div>
@@ -1296,23 +1383,45 @@ function renderReview() {
     <div class="lib-info"><div class="lib-title">Appendix Grammaticus</div>
     <div class="lib-sub">o que é cada caso (dativo, ablativo…), tempos, modos e as tabelas completas</div></div>
     <div>→</div></div>
+  <div class="gram-card glass" style="margin-top:16px"><h3>📈 Suas revisões</h3>
+    <div class="srs-stats">
+      <span><b>${f.novas}</b> novas</span> · <span><b>${f.aprendendo}</b> aprendendo</span> · <span><b>${f.maduras}</b> maduras <small>(intervalo ≥ 21 dias)</small></span>
+    </div>
+    <div class="forecast">${f.days.map(d => `
+      <div class="fc-col"><div class="fc-bar" style="height:${Math.round(d.n / maxDay * 48) + 4}px"></div>
+      <div class="fc-n">${d.n}</div><div class="fc-l">${d.label}</div></div>`).join("")}</div>
+    <p class="ex-hint" style="margin-top:10px">🔬 Método: <b>repetição espaçada</b> (SM-2/SuperMemo, usado pelo Anki). Cada palavra tem um fator de facilidade: acertou → o intervalo estica (1 → 6 → ×2,5 dias…); acertou <i>digitando</i> → estica mais; errou → volta pra amanhã e o fator encolhe. Você revê cada palavra pouco antes de esquecê-la — a curva do esquecimento de Ebbinghaus. Nas leituras, toque numa palavra → "➕ frase inteira" pra minerar frases pra cá.</p>
+  </div>
   <div class="gram-card glass" style="margin-top:16px"><h3>🗺️ Seu mapa de domínio</h3>
     <p class="ex-hint" style="margin-bottom:8px">Declinações × casos e conjugações × tempos, pintados pelo seu desempenho no Declinā!. <span style="color:var(--green)">■</span> ≥85% · <span style="color:#f2c14e">■</span> 60-84% · <span style="color:var(--red)">■</span> &lt;60% · cinza = sem dados.</p>
     <div style="overflow-x:auto">${heatmapHTML()}</div></div>`;
 }
 function startSrsReview() {
   const due = dueWords();
-  if (due.length === 0) {
-    toast("🌿 Nihil repetendum — nenhuma palavra vencida agora");
+  const dSents = dueSents();
+  if (due.length === 0 && dSents.length === 0) {
+    toast("🌿 Nihil repetendum — nada vencido agora");
     return;
   }
   const batch = shuffle(due).slice(0, 12);
   const queue = batch.map(({ k, v }) => {
-    const ch = COURSE.find(c => c.num === (S.srs[k] ? S.srs[k].cap : 1)) || COURSE[0];
     const r = Math.random();
     const ex = r < 0.4 ? { t: "mcqv", dir: "la>pt", v } : r < 0.8 ? { t: "mcqv", dir: "pt>la", v } : { t: "typev", v };
     ex._srsKey = k;
     return ex;
+  });
+  // cards de frase: lacuna com a palavra minerada
+  shuffle(dSents).slice(0, 6).forEach(([id, it]) => {
+    const entry = lookup(it.word);
+    const re = new RegExp(it.word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    queue.push({
+      t: "gap",
+      prompt: it.sent.replace(re, "___"),
+      a: [it.word, stripMacrons(it.word)],
+      hint: (entry ? entry.pt : "") + (it.src ? " · " + it.src : ""),
+      why: entry ? `${entry.la} = ${entry.pt}` : "",
+      _sentKey: id
+    });
   });
   L = { ch: COURSE[0], lesson: null, queue, idx: 0, total: queue.length, correct: 0, wrong: 0, combo: 0, best: 0, xp: 0 };
   // mcqv precisa de ch.vocab pra distratores: usa o pool inteiro
