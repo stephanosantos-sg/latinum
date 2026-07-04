@@ -307,7 +307,7 @@ function renderHome() {
     h += `<div class="lesson-chip" onclick="showGrammar(${ch.num})"><span class="lc-icon">🏛️</span>Gramática<span class="lc-status">ref.</span></div>`;
     h += `</div></section>`;
   });
-  h += `<p class="page-sub" style="text-align:center;margin-top:20px">Capítulos XIX–XXXV: em breve — o motor já está pronto pra receber eles.</p>`;
+  h += `<p class="page-sub" style="text-align:center;margin-top:20px">🏛️ Familia Rōmāna completo — os 35 capítulos. Fīnis corōnat opus!</p>`;
   $("#view").innerHTML = h;
 }
 function toggleUnit(num) {
@@ -752,7 +752,9 @@ document.addEventListener("click", e => { if (!e.target.closest("#gloss-pop") &&
 function renderLibrary() {
   const maxCap = maxUnlockedCap();
   let h = `<h1 class="page-title">Bibliothēca</h1>
-  <p class="page-sub">Fabellae Latīnae — historinhas graduadas. Leia como no LingQ: toque nas palavras que não conhece.</p>`;
+  <p class="page-sub">Leituras graduadas estilo LingQ: toque nas palavras que não conhece. Desbloqueie mais completando capítulos.</p>`;
+
+  h += `<h2 class="lib-section">📖 Fabellae Latīnae <small>historinhas</small></h2>`;
   FABELLAE.forEach(f => {
     const open = f.cap <= maxCap;
     const read = S.readFab[f.id];
@@ -763,8 +765,38 @@ function renderLibrary() {
       <div>${read ? "✅" : open ? "→" : "🔒"}</div>
     </div>`;
   });
-  h += `<p class="page-sub" style="margin-top:14px">Desbloqueie mais histórias completando capítulos no Cursus.</p>`;
+
+  h += `<h2 class="lib-section">💬 Colloquia Persōnarum <small>diálogos, um por capítulo</small></h2>`;
+  (typeof COLLOQUIA !== "undefined" ? COLLOQUIA : []).forEach(c => {
+    const open = c.cap <= maxCap;
+    const read = S.readFab[c.id];
+    h += `<div class="lib-item glass ${open ? "" : "locked"}" onclick="openColloquium('${c.id}')">
+      <div class="lib-icon">💬</div>
+      <div class="lib-info"><div class="lib-title">${esc(c.title)}</div>
+      <div class="lib-sub">cap. ${c.cap}${c.personae ? " · " + esc(c.personae) : ""}</div></div>
+      <div>${read ? "✅" : open ? "→" : "🔒"}</div>
+    </div>`;
+  });
   $("#view").innerHTML = h;
+}
+function openColloquium(id) {
+  const c = COLLOQUIA.find(x => x.id === id);
+  if (!c) return;
+  let h = `<div class="lesson-top"><button class="btn-quit" onclick="App.go('library')">←</button>
+    <h1 class="page-title" style="margin:0">${esc(c.title)}</h1></div>
+  <div class="reader glass">
+    <div class="r-meta">Colloquia Persōnarum · cap. ${c.cap}${c.personae ? " · Persōnae: " + esc(c.personae) : ""}</div>
+    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>nova</span>
+      <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
+      <span>👆 toca na palavra pra ver o significado</span></div>
+    ${ttsControls("speak(window._fabText)")}
+    <div class="reader-text">${readerHTML(c.text)}</div>
+  </div>
+  <button class="btn-main" onclick="finishFabella('${c.id}')">Lēgī! — terminei de ler (+8 XP)</button>`;
+  $("#view").innerHTML = h;
+  window._fabText = c.text.replace(/\n+/g, ". ");
+  bindReaderWords();
+  window.scrollTo(0, 0);
 }
 function openFabella(id) {
   const f = FABELLAE.find(x => x.id === id);

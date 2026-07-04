@@ -290,6 +290,8 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
 .gloss-pop .g-actions button { flex: 1; border: 1px solid var(--glass-border); background: var(--glass-strong); color: var(--text); border-radius: 10px; padding: 6px 8px; font-size: .76rem; cursor: pointer; }
 
 /* library list */
+.lib-section { font-family: Georgia, serif; color: var(--gold); font-size: 1.05rem; margin: 22px 4px 10px; }
+.lib-section small { color: var(--text-dim); font-family: -apple-system, sans-serif; font-size: .75rem; font-weight: 400; margin-left: 6px; }
 .lib-item { display: flex; align-items: center; gap: 14px; border-radius: var(--radius); padding: 16px; margin-bottom: 12px; cursor: pointer; transition: transform .12s; }
 .lib-item:hover { transform: translateY(-2px); }
 .lib-item.locked { opacity: .45; pointer-events: none; }
