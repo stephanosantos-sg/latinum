@@ -600,21 +600,68 @@ function tokTap(i, w) {
 }
 function redrawBuild() {
   $("#build-area").innerHTML = window._built.map((t, j) =>
-    `<button class="token la" onclick="tokRemove(${j})">${esc(t.w)}</button>`).join("");
+    `<button class="token la" data-i="${t.i}" data-w="${esc(t.w)}" onclick="tokRemove(${j})">${esc(t.w)}</button>`).join("");
   $("#btn-check").disabled = window._built.length === 0;
+  [...$("#build-area").children].forEach(tok => { tok.onpointerdown = e => tokDragStart(e, tok); });
 }
 function tokRemove(j) {
+  if (window._justDragged) return; // clique fantasma pós-arrasto
   const t = window._built.splice(j, 1)[0];
   $(`#tok${t.i}`).classList.remove("ghost");
   redrawBuild();
 }
+/* arrastar-e-soltar pra reordenar a frase (pointer events = mouse + touch) */
+function tokDragStart(e, tok) {
+  const sx = e.clientX, sy = e.clientY;
+  let started = false;
+  const move = ev => {
+    if (!started) {
+      if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 8) return;
+      started = true;
+      tok.classList.add("dragging");
+    }
+    ev.preventDefault();
+    const area = $("#build-area");
+    if (!area) return;
+    const others = [...area.children].filter(c => c !== tok);
+    let placed = false;
+    for (const o of others) {
+      const r = o.getBoundingClientRect();
+      const sameRow = ev.clientY >= r.top - 6 && ev.clientY <= r.bottom + 6;
+      if (ev.clientY < r.top - 6 || (sameRow && ev.clientX < r.left + r.width / 2)) {
+        area.insertBefore(tok, o); placed = true; break;
+      }
+    }
+    if (!placed) area.appendChild(tok);
+  };
+  const up = () => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    document.removeEventListener("pointercancel", up);
+    if (started) {
+      tok.classList.remove("dragging");
+      const area = $("#build-area");
+      if (area) window._built = [...area.children].map(el => ({ i: +el.dataset.i, w: el.dataset.w }));
+      window._justDragged = true;
+      setTimeout(() => { window._justDragged = false; }, 250);
+      redrawBuild();
+    }
+  };
+  document.addEventListener("pointermove", move, { passive: false });
+  document.addEventListener("pointerup", up);
+  document.addEventListener("pointercancel", up);
+}
 function checkBuild() {
   const ex = L.queue[L.idx];
   const got = normPhrase(window._built.map(t => t.w).join(" "));
-  const ok = got === ex._target;
+  const exact = got === ex._target;
+  // latim tem ordem livre: aceita qualquer ordem com exatamente as palavras certas
+  const bag = s => s.split(" ").sort().join(" ");
+  const okBag = !exact && bag(got) === bag(ex._target);
+  const ok = exact || okBag;
   $("#btn-check").style.display = "none";
   window._built = [];
-  feedback(ok, ok ? "" : `Resposta: "${ex.la}"`, ex);
+  feedback(ok, ok ? (okBag ? `Ordem também válida! No livro: "${ex.la}"` : "") : `Resposta: "${ex.la}"`, ex);
   if (ok) speak(ex.la);
 }
 

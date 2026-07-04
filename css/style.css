@@ -195,6 +195,8 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
 }
 .token:hover { background: rgba(255,255,255,.2); }
 .token.ghost { opacity: .25; pointer-events: none; }
+#build-area .token { touch-action: none; cursor: grab; }
+#build-area .token.dragging { opacity: .75; transform: scale(1.08); cursor: grabbing; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
 
 /* typed */
 .type-input {
