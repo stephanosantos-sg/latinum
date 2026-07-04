@@ -3667,8 +3667,76 @@ function renderProfile() {
   </div>
   <div class="gram-card glass"><h3>Sobre este curso</h3>
     <p>Baseado em <i>Lingua Latina per se Illustrata — Pars I: Familia Romana</i> (Hans H. Ørberg) e nas <i>Fabellae Latinae</i>. Método natural: você aprende latim <b>em latim</b>, com contexto, sem tradução decorada. Capítulos I–VIII disponíveis; a estrutura já aceita os capítulos IX–XXXV.</p></div>
+  <div class="gram-card glass"><h3>💾 Salvar / transferir progresso</h3>
+    <p>Seu progresso fica salvo neste navegador. Pra ter backup ou levar pra outro aparelho (celular ↔ computador), exporte aqui e importe lá.</p>
+    <div class="lesson-row" style="margin-top:12px">
+      <div class="lesson-chip" onclick="exportProgress()"><span class="lc-icon">📤</span>Baixar arquivo</div>
+      <div class="lesson-chip" onclick="copyProgress()"><span class="lc-icon">📋</span>Copiar código</div>
+      <div class="lesson-chip" onclick="showImport()"><span class="lc-icon">📥</span>Importar</div>
+    </div>
+    <div id="import-box" hidden style="margin-top:12px">
+      <textarea id="import-text" class="type-input" style="min-height:90px;font-family:monospace;font-size:.8rem" placeholder="Cole aqui o código copiado no outro aparelho — ou escolha o arquivo abaixo"></textarea>
+      <input type="file" id="import-file" accept=".json,application/json" style="margin:10px 0;color:var(--text-dim)">
+      <button class="btn-main" onclick="importProgress()">Importar progresso</button>
+      <p class="ex-hint" style="margin-top:8px">⚠️ Importar substitui o progresso deste navegador.</p>
+    </div>
+  </div>
   <button class="btn-main btn-ghost" onclick="resetProgress()">Zerar progresso</button>`;
   $("#view").innerHTML = h;
+  const fileInput = $("#import-file");
+  if (fileInput) fileInput.addEventListener("change", e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => { $("#import-text").value = r.result; };
+    r.readAsText(f);
+  });
+}
+
+/* ---------- backup / restore ---------- */
+function exportProgress() {
+  const blob = new Blob([JSON.stringify(S, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `latinum-progresso-${todayKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("📤 Arquivo de progresso baixado");
+}
+function copyProgress() {
+  const code = "LATINVM1:" + btoa(unescape(encodeURIComponent(JSON.stringify(S))));
+  const done = () => toast("📋 Código copiado! Cole no outro aparelho.");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(code).then(done, () => promptCopy(code));
+  } else promptCopy(code);
+}
+function promptCopy(code) {
+  const box = $("#import-box"); box.hidden = false;
+  $("#import-text").value = code;
+  $("#import-text").select();
+  toast("Selecione e copie o código acima");
+}
+function showImport() {
+  const box = $("#import-box");
+  box.hidden = !box.hidden;
+  if (!box.hidden) { $("#import-text").value = ""; $("#import-text").focus(); }
+}
+function importProgress() {
+  let raw = $("#import-text").value.trim();
+  if (!raw) { toast("Cole o código ou escolha o arquivo primeiro"); return; }
+  try {
+    if (raw.startsWith("LATINVM1:")) raw = decodeURIComponent(escape(atob(raw.slice(9))));
+    const data = JSON.parse(raw);
+    if (typeof data.xp !== "number" || typeof data.lessons !== "object")
+      throw new Error("formato");
+    if (!confirm(`Importar progresso com ${data.xp} XP e ${Object.keys(data.lessons || {}).length} lições? O progresso atual deste navegador será substituído.`)) return;
+    S = Object.assign({}, DEFAULT_STATE, data);
+    save(); renderStats();
+    toast("📥 Progresso importado!");
+    App.go("profile");
+  } catch (e) {
+    toast("❌ Código/arquivo inválido — confere se copiou inteiro");
+  }
 }
 function resetProgress() {
   if (!confirm("Zerar todo o progresso (XP, streak, lições, SRS)?")) return;
