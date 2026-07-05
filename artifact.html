@@ -8386,10 +8386,9 @@ function openLectio(ch) {
   <div class="reader glass">
     <h2>${esc(lec.title)}</h2>
     <div class="r-meta">${esc(lec.source)}</div>
-    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>palavra nova</span>
-      <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
-      <span><i style="background:transparent;border:1px solid var(--glass-border)"></i>conhecida</span>
-      <span>👆 toca na palavra pra ver o significado</span></div>
+    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>ainda não estudada</span>
+      <span><i style="background:var(--yellow-known)"></i>no seu SRS</span>
+      <span>sem marca = dominada · automático pelo seu progresso · 👆 toque pra ver/corrigir</span></div>
     ${abControls()}
     <div class="reader-text" id="reader-text">${readerHTML(lec.text)}</div>
   </div>
@@ -8611,18 +8610,44 @@ function revealPensumA() {
    READER core (LingQ style)
    ============================================================ */
 const stripMacrons = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/ȳ/g, "y").replace(/Ȳ/g, "Y");
+
+/* Detecção AUTOMÁTICA do status da palavra:
+   0 = nova (azul: existe no curso mas você ainda não estudou)
+   1 = aprendendo (amarela: está no seu SRS, ainda não madura)
+   2 = conhecida (sem marca: madura no SRS, palavra funcional ou nome)
+   Clique manual (S.words) sempre tem prioridade. */
+const _wsCache = new Map();
+function wordStatusAuto(w, n) {
+  if (S.words[n] !== undefined) return S.words[n];
+  if (_wsCache.has(n)) return _wsCache.get(n);
+  let st;
+  const e = lookup(w);
+  if (!e) st = 0;                        // desconhecida do glossário: nova
+  else if (e.fn || !e.cap) st = 2;       // palavra funcional ou nome próprio: sem marca
+  else if (/(prep|conj|interj|indecl|pron|adv|num|loc)\.?/.test(e.forms || "") || /[\/()]/.test(e.la)) st = 2; // palavra-cola/paradigma: sem marca
+  else {
+    const it = S.srs[norm(e.la) + "|" + e.cap];
+    if (!it) st = 0;                     // ainda não estudada em lição
+    else st = (it.interval || 0) >= 21 ? 2 : 1; // madura → conhecida; senão aprendendo
+  }
+  _wsCache.set(n, st);
+  return st;
+}
+function wsCacheClear() { _wsCache.clear(); }
+
 function wrapWords(s, plain) {
   return s.replace(/([A-Za-zĀĒĪŌŪȲāēīōūȳ]+)/g, m => {
     const n = norm(m);
     if (n.length < 2) return S.hideMacrons && !plain ? stripMacrons(m) : m;
-    const st = S.words[n]; // undefined=new, 1=learning, 2=known
-    const cls = plain ? "" : (st === 2 ? "" : st === 1 ? "learning" : "new");
+    const st = plain ? 2 : wordStatusAuto(m, n);
+    const cls = st === 2 ? "" : st === 1 ? "learning" : "new";
     const shown = S.hideMacrons && !plain ? stripMacrons(m) : m;
     return `<span class="w ${cls}" data-w="${esc(m)}">${shown}</span>`;
   });
 }
 function readerHTML(text, plain) {
   let si = 0;
+  wsCacheClear();
   readerHTML._sents = [];
   const html = text.split(/\n\n+/).map(p => {
     const sents = p.split(/(?<=[.!?…])(?=\s)/).map(s => s.trim()).filter(Boolean);
@@ -8921,9 +8946,9 @@ function openColloquium(id) {
     <h1 class="page-title" style="margin:0">${esc(c.title)}</h1></div>
   <div class="reader glass">
     <div class="r-meta">Colloquia Persōnarum · cap. ${c.cap}${c.personae ? " · Persōnae: " + esc(c.personae) : ""}</div>
-    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>nova</span>
-      <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
-      <span>👆 toca na palavra pra ver o significado</span></div>
+    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>ainda não estudada</span>
+      <span><i style="background:var(--yellow-known)"></i>no seu SRS</span>
+      <span>sem marca = dominada · 👆 toque pra ver/corrigir</span></div>
     ${abControls()}
     <div class="reader-text">${readerHTML(c.text)}</div>
   </div>
@@ -8944,9 +8969,9 @@ function openFabella(id) {
     <h1 class="page-title" style="margin:0">${esc(f.title)}</h1></div>
   <div class="reader glass">
     <div class="r-meta">Fabellae Latīnae · ${esc(f.level)}</div>
-    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>nova</span>
-      <span><i style="background:var(--yellow-known)"></i>aprendendo</span>
-      <span>👆 toca na palavra pra ver o significado</span></div>
+    <div class="reader-legend"><span><i style="background:var(--blue-new)"></i>ainda não estudada</span>
+      <span><i style="background:var(--yellow-known)"></i>no seu SRS</span>
+      <span>sem marca = dominada · 👆 toque pra ver/corrigir</span></div>
     ${abControls()}
     <div class="reader-text">${readerHTML(f.text)}</div>
   </div>
