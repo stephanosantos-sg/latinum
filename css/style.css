@@ -358,13 +358,18 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
 .prof-card .big { font-size: 1.9rem; font-weight: 800; color: var(--gold); }
 .prof-card .lbl { font-size: .78rem; color: var(--text-dim); margin-top: 2px; }
 .rank-track { border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
-.rank-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; opacity: .45; }
+.rank-item { display: flex; align-items: center; gap: 12px; padding: 7px 0; opacity: .4; }
 .rank-item.reached { opacity: 1; }
-.rank-item.current { opacity: 1; }
+.rank-item.current { opacity: 1; background: var(--gold-soft); border-radius: 12px; padding: 8px 10px; margin: 2px -10px; }
 .rank-item.current .rk-name { color: var(--gold); font-weight: 800; }
-.rk-badge { width: 34px; text-align: center; font-size: 1.2rem; }
-.rk-name { font-family: Georgia, serif; }
-.rk-xp { margin-left: auto; font-size: .8rem; color: var(--text-dim); }
+.rk-badge { width: 34px; text-align: center; font-size: 1.2rem; flex: none; }
+.rk-name { font-family: Georgia, serif; display: flex; flex-direction: column; line-height: 1.25; }
+.rk-gloss { font-family: -apple-system, sans-serif; font-size: .68rem; color: var(--text-dim); font-weight: 400; }
+.rk-xp { margin-left: auto; font-size: .8rem; color: var(--text-dim); font-variant-numeric: tabular-nums; flex: none; }
+.rank-item.reached .rk-xp::after { content: " ✓"; color: var(--green); }
+.rank-item.current .rk-xp::after { content: ""; }
+.rank-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.1); margin-top: 12px; overflow: hidden; }
+.rank-bar > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold), #ffdd87); transition: width .4s ease; }
 
 /* ============ BOTTOM NAV ============ */
 .bottomnav {

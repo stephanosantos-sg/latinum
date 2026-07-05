@@ -110,15 +110,22 @@ function syncChipTap() {
   else cloudLogin();
 }
 
-/* ---------- ranks (Cursus Honorum) ---------- */
+/* ---------- ranks (Cursus Honōrum) ----------
+   Calibrado para o curso completo: ~17.000 XP para percorrer as 363 lições
+   uma vez. Imperātor ≈ terminar o curso; Augustus ≈ dominar (curso + revisões). */
 const RANKS = [
-  { xp: 0, name: "Discipulus", badge: "🎓" },
-  { xp: 120, name: "Scrība", badge: "✍️" },
-  { xp: 320, name: "Quaestor", badge: "📜" },
-  { xp: 650, name: "Aedīlis", badge: "🏗️" },
-  { xp: 1100, name: "Praetor", badge: "⚖️" },
-  { xp: 1700, name: "Cōnsul", badge: "🦅" },
-  { xp: 2600, name: "Imperātor", badge: "👑" }
+  { xp: 0,     name: "Discipulus",  badge: "🎓", gloss: "aluno — o primeiro dia de aula" },
+  { xp: 200,   name: "Tīrō",        badge: "📖", gloss: "recruta — dá os primeiros passos" },
+  { xp: 600,   name: "Scrība",      badge: "✍️", gloss: "escrivão — já lê e escreve" },
+  { xp: 1300,  name: "Grammaticus", badge: "📜", gloss: "conhece as declinações" },
+  { xp: 2400,  name: "Quaestor",    badge: "🪙", gloss: "primeiro degrau do cursus honōrum" },
+  { xp: 4000,  name: "Aedīlis",     badge: "🏛️", gloss: "cuida da cidade" },
+  { xp: 6200,  name: "Praetor",     badge: "⚖️", gloss: "administra a justiça" },
+  { xp: 9000,  name: "Cōnsul",      badge: "🦅", gloss: "o topo da magistratura" },
+  { xp: 12000, name: "Prōcōnsul",   badge: "🌍", gloss: "governa uma província" },
+  { xp: 15000, name: "Cēnsor",      badge: "👁️", gloss: "guardião da tradição" },
+  { xp: 18500, name: "Imperātor",   badge: "👑", gloss: "curso completo — comanda o latim" },
+  { xp: 24000, name: "Augustus",    badge: "⭐", gloss: "domínio pleno — avē, magister!" }
 ];
 const rankFor = xp => RANKS.slice().reverse().find(r => xp >= r.xp);
 
@@ -1554,12 +1561,16 @@ function renderProfile() {
   <div class="rank-track glass">
     <h3 style="font-family:Georgia,serif;color:var(--gold);margin-bottom:10px">Cursus Honōrum</h3>
     ${RANKS.map(rk => `<div class="rank-item ${S.xp >= rk.xp ? "reached" : ""} ${rk.name === r.name ? "current" : ""}">
-      <div class="rk-badge">${rk.badge}</div><div class="rk-name">${rk.name}</div>
-      <div class="rk-xp">${rk.xp} XP</div></div>`).join("")}
-    ${next ? `<p class="ex-hint" style="margin-top:10px">Faltam <b>${next.xp - S.xp} XP</b> pra virar ${next.name}.</p>` : `<p class="ex-hint" style="margin-top:10px">Avē, Imperātor! 👑</p>`}
+      <div class="rk-badge">${rk.badge}</div>
+      <div class="rk-name">${rk.name}<span class="rk-gloss">${rk.gloss}</span></div>
+      <div class="rk-xp">${rk.xp.toLocaleString("pt-BR")}</div></div>`).join("")}
+    ${next
+      ? `<div class="rank-bar"><div style="width:${Math.round((S.xp - r.xp) / (next.xp - r.xp) * 100)}%"></div></div>
+         <p class="ex-hint" style="margin-top:6px">Faltam <b>${(next.xp - S.xp).toLocaleString("pt-BR")} XP</b> pra virar ${next.name}.</p>`
+      : `<p class="ex-hint" style="margin-top:10px">Avē, Auguste! Dominās linguam Latīnam. ⭐</p>`}
   </div>
   <div class="gram-card glass"><h3>Sobre este curso</h3>
-    <p>Baseado em <i>Lingua Latina per se Illustrata — Pars I: Familia Romana</i> (Hans H. Ørberg) e nas <i>Fabellae Latinae</i>. Método natural: você aprende latim <b>em latim</b>, com contexto, sem tradução decorada. Capítulos I–VIII disponíveis; a estrutura já aceita os capítulos IX–XXXV.</p></div>
+    <p>O curso <b>Lingua Latina per se Illustrata</b> completo (Hans H. Ørberg): <i>Familia Romana</i> (I–XXXV) e <i>Roma Aeterna</i> (XXXVI–LVI), mais as <i>Fabellae Latīnae</i> e os <i>Colloquia Persōnārum</i>. Método natural: você aprende latim <b>em latim</b>, com contexto, sem tradução decorada — do "Rōma in Italiā est" até Cícero e Tito Lívio. São <b>56 capítulos e 363 lições</b>: chegar a Imperātor é uma maratona de meses, não de dias. Fēstīnā lentē!</p></div>
   <div class="gram-card glass" id="sync-box"><h3>☁️ Sincronização automática</h3>
     ${!cloudAvailable()
       ? `<p>Indisponível nesta versão (bloqueio de rede). Use o link <b>stephanosantos-sg.github.io/latinum</b> pra sincronizar.</p>`
