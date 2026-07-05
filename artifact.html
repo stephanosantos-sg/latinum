@@ -90,6 +90,10 @@ main {
   max-width: 680px; margin: 0 auto;
   padding: 20px 16px calc(var(--nav-h) + 30px);
   min-height: calc(100vh - 60px);
+  transition: padding-bottom .2s;
+}
+body.ab-active main {
+  padding-bottom: calc(var(--nav-h) + 84px);
 }
 
 h1.page-title { font-family: Georgia, serif; font-size: 1.5rem; color: var(--gold); margin: 6px 4px 4px; letter-spacing: .04em; }
@@ -375,6 +379,31 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
 .rank-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,.1); margin-top: 12px; overflow: hidden; }
 .rank-bar > div { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--gold), #ffdd87); transition: width .4s ease; }
 
+/* ============ AUDIOBOOK FLOATING BAR ============ */
+.ab-bar[hidden] { display: none !important; }
+.ab-bar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--nav-h) + 10px);
+  z-index: 60;
+  display: flex; align-items: center; gap: 4px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  max-width: calc(100% - 24px);
+  box-shadow: 0 8px 28px rgba(0,0,0,.4);
+}
+.ab-btn {
+  border: none; background: var(--glass-strong);
+  color: var(--text); cursor: pointer;
+  width: 42px; height: 42px; border-radius: 50%;
+  font-size: 1.05rem; display: grid; place-items: center;
+  flex: none; transition: background .12s, transform .1s;
+}
+.ab-btn:active { transform: scale(.9); }
+.ab-btn.ab-play { background: linear-gradient(135deg, var(--gold), #e8a838); width: 48px; height: 48px; font-size: 1.2rem; }
+.ab-btn.toggled { border: 1px solid var(--gold); color: var(--gold); background: var(--gold-soft); }
+.ab-rate { min-width: 40px; text-align: center; margin: 0 2px; }
+@media (max-width: 380px) { .ab-btn { width: 38px; height: 38px; font-size: .95rem; } }
+
 /* ============ BOTTOM NAV ============ */
 .bottomnav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
@@ -505,6 +534,9 @@ p.page-sub { color: var(--text-dim); margin: 0 4px 18px; font-size: .92rem; }
   <button class="nav-btn" data-nav="library" onclick="App.go('library')"><span>📖</span>Bibliothēca</button>
   <button class="nav-btn" data-nav="profile" onclick="App.go('profile')"><span>🏆</span>Profectus</button>
 </nav>
+
+<!-- ===== AUDIOBOOK FLOATING BAR ===== -->
+<div id="ab-bar" class="ab-bar glass" hidden></div>
 
 <!-- ===== WORD GLOSS POPUP (LingQ style) ===== -->
 <div id="gloss-pop" class="gloss-pop glass" hidden></div>
@@ -7580,7 +7612,42 @@ const FIREBASE_CONFIG = {
   appId: "1:558543348252:web:e9b79438b31bb9db7435d9"
 };
 let _fbUser = null, _fbDb = null, _pushTimer = null, _syncStatus = "off";
+let _snapUnsub = null, _applyingCloud = false, _lastPushJSON = null;
 const cloudAvailable = () => typeof firebase !== "undefined";
+
+/* MERGE sem perda: nunca sobrescreve progresso — funde os dois lados.
+   Progresso só cresce; escolhas (rate/idioma) seguem o save mais recente. */
+function mergeState(a, b) {
+  a = a || {}; b = b || {};
+  const newer = (a.savedAt || 0) >= (b.savedAt || 0) ? a : b;
+  const older = newer === a ? b : a;
+  const m = Object.assign({}, DEFAULT_STATE, older, newer); // newer vence nos escalares/prefs
+  m.xp = Math.max(a.xp || 0, b.xp || 0);
+  m.streak = Math.max(a.streak || 0, b.streak || 0);
+  m.lastDay = (a.lastDay || "") > (b.lastDay || "") ? a.lastDay : b.lastDay;
+  // uniões (progresso binário): true de qualquer lado permanece
+  ["lessons", "readFab", "words"].forEach(k => { m[k] = Object.assign({}, a[k], b[k]); });
+  // SRS/frases: por chave, mantém o item MAIS avançado (maior intervalo)
+  ["srs", "sents"].forEach(k => {
+    m[k] = Object.assign({}, a[k]);
+    const bb = b[k] || {};
+    for (const key in bb) {
+      const cur = m[k][key];
+      if (!cur || (bb[key].interval || 0) > (cur.interval || 0) || (bb[key].due || "") > (cur.due || "")) m[k][key] = bb[key];
+    }
+  });
+  // gramática (Declinā!): soma acertos e erros dos dois lados
+  m.gram = Object.assign({}, a.gram);
+  const bg = b.gram || {};
+  for (const key in bg) {
+    const cur = m.gram[key];
+    m.gram[key] = cur ? { ok: (cur.ok || 0) + (bg[key].ok || 0), bad: (cur.bad || 0) + (bg[key].bad || 0) } : bg[key];
+  }
+  // meta do dia: a do save mais recente
+  m.day = newer.day || older.day;
+  m.savedAt = Math.max(a.savedAt || 0, b.savedAt || 0);
+  return m;
+}
 
 function initCloud() {
   if (!cloudAvailable() || _fbDb) return;
@@ -7588,8 +7655,8 @@ function initCloud() {
   _fbDb = firebase.firestore();
   firebase.auth().onAuthStateChanged(user => {
     _fbUser = user;
-    if (user) { _syncStatus = "on"; cloudPull(); }
-    else _syncStatus = "off";
+    if (user) { _syncStatus = "on"; startCloudSync(); }
+    else { _syncStatus = "off"; if (_snapUnsub) { _snapUnsub(); _snapUnsub = null; } }
     renderSyncChip();
     if (document.querySelector("#sync-box")) renderProfile();
   });
@@ -7603,38 +7670,68 @@ async function cloudLogin() {
   }
 }
 function cloudLogout() {
+  if (_snapUnsub) { _snapUnsub(); _snapUnsub = null; }
   if (cloudAvailable()) firebase.auth().signOut();
   toast("Desconectado — progresso continua salvo neste navegador");
 }
-async function cloudPull() {
+
+/* liga o sync automático em tempo real: escuta o doc e funde qualquer mudança */
+function startCloudSync() {
   if (!_fbUser || !_fbDb) return;
-  try {
-    const doc = await _fbDb.collection("users").doc(_fbUser.uid).get();
-    const cloud = doc.exists ? doc.data().latinum : null;
-    if (cloud && (cloud.savedAt || 0) > (S.savedAt || 0)) {
-      S = Object.assign({}, DEFAULT_STATE, cloud);
-      localStorage.setItem("latinum", JSON.stringify(S));
-      renderStats();
-      toast("☁️ Progresso da nuvem carregado (" + S.xp + " XP)");
-      App.go("profile");
-    } else {
-      cloudPush(); // local é mais novo (ou nuvem vazia): sobe
-    }
-  } catch (e) { console.error("cloudPull:", e); _syncStatus = "error"; }
+  if (_snapUnsub) _snapUnsub();
+  _snapUnsub = _fbDb.collection("users").doc(_fbUser.uid)
+    .onSnapshot({ includeMetadataChanges: false }, snap => {
+      const cloud = snap.exists ? snap.data().latinum : null;
+      if (!cloud) { cloudPush(); return; } // nuvem vazia: sobe o que temos
+      const before = JSON.stringify(S);
+      const merged = mergeState(S, cloud);
+      const mergedJSON = JSON.stringify(merged);
+      if (mergedJSON !== before) {
+        // a nuvem trouxe algo novo → aplica localmente (sem re-disparar push em loop)
+        _applyingCloud = true;
+        S = merged;
+        localStorage.setItem("latinum", JSON.stringify(S));
+        renderStats();
+        const v = App._view || "home";
+        if (v === "profile") renderProfile(); else if (v === "review") renderReview();
+        _applyingCloud = false;
+        if (!L && !window._ab) toast("☁️ Progresso sincronizado (" + S.xp + " XP)");
+      }
+      // se o merge tem algo que a nuvem ainda não tem, sobe
+      if (mergedJSON !== JSON.stringify(cloud)) cloudPush(true);
+    }, err => {
+      console.error("cloudSync:", err); _syncStatus = "error"; renderSyncChip();
+    });
 }
-async function cloudPush() {
+async function cloudPush(force) {
   if (!_fbUser || !_fbDb) return;
+  const json = JSON.stringify(S);
+  if (!force && json === _lastPushJSON) return;
   try {
-    await _fbDb.collection("users").doc(_fbUser.uid).set({ latinum: JSON.parse(JSON.stringify(S)) }, { merge: true });
+    await _fbDb.collection("users").doc(_fbUser.uid).set({ latinum: JSON.parse(json) }, { merge: true });
+    _lastPushJSON = json;
     _syncStatus = "on";
     const el = document.querySelector("#sync-status");
     if (el) el.textContent = "☁️ Sincronizado agora há pouco";
-  } catch (e) { console.error("cloudPush:", e); _syncStatus = "error"; }
+  } catch (e) { console.error("cloudPush:", e); _syncStatus = "error"; renderSyncChip(); }
+}
+/* botão manual "puxar": força uma releitura e merge imediatos */
+async function cloudPull() {
+  if (!_fbUser || !_fbDb) { toast("Entre com o Google primeiro"); return; }
+  try {
+    const doc = await _fbDb.collection("users").doc(_fbUser.uid).get();
+    const cloud = doc.exists ? doc.data().latinum : null;
+    S = mergeState(S, cloud);
+    localStorage.setItem("latinum", JSON.stringify(S));
+    renderStats(); cloudPush(true);
+    toast("☁️ Progresso sincronizado (" + S.xp + " XP)");
+    App.go("profile");
+  } catch (e) { console.error("cloudPull:", e); toast("❌ Erro ao sincronizar: " + (e.code || e.message)); }
 }
 function scheduleCloudPush() {
-  if (!_fbUser) return;
+  if (!_fbUser || _applyingCloud) return;
   clearTimeout(_pushTimer);
-  _pushTimer = setTimeout(cloudPush, 3000);
+  _pushTimer = setTimeout(() => cloudPush(), 2000);
 }
 function renderSyncChip() {
   const chip = document.getElementById("sync-chip");
@@ -7914,10 +8011,12 @@ function maxUnlockedCap() {
 /* ---------- navigation ---------- */
 const App = {
   go(view, arg) {
+    App._view = view;
     document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.nav === view));
     speechSynthesis && speechSynthesis.cancel();
     window._ab = null;
     window._rerenderReader = null;
+    hideAbBar();
     hideGloss();
     if (view === "home") renderHome();
     if (view === "review") renderReview();
@@ -8450,20 +8549,33 @@ function lectioAnswer(i, a, qi, correct, btn) {
 /* ============================================================
    AUDIOBOOK (karaokê frase a frase)
    ============================================================ */
-function abControls() {
-  return `<div class="tts-row" id="ab-controls">
-    <button class="speak-btn" id="ab-play" onclick="abToggle()">▶️ ouvir</button>
-    <button class="speak-btn" onclick="abStep(-1)" title="frase anterior">⏮</button>
-    <button class="speak-btn" onclick="abStep(1)" title="próxima frase">⏭</button>
-    <button class="speak-btn" onclick="abRepeat()" title="repete a frase">🔁</button>
-    <button class="speak-btn" onclick="changeRate(-1)" title="mais devagar">🐢</button>
-    <span class="tts-rate">${rateLabel()}</span>
-    <button class="speak-btn" onclick="changeRate(1)" title="mais rápido">🐇</button>
-    <button class="speak-btn ${S.hideMacrons ? "toggled" : ""}" onclick="toggleMacrons()" title="esconde/mostra macrons (modo texto real)">ā/a</button>
-  </div>`;
+/* barra de áudio: agora flutua fixa no rodapé (não empurra o texto) */
+function abControls() { return ""; } // legado: os controles agora vivem em #ab-bar
+function abBarHTML() {
+  return `<button class="ab-btn ab-play" id="ab-play" onclick="abToggle()" title="ouvir / pausar">▶️</button>
+    <button class="ab-btn" onclick="abStep(-1)" title="frase anterior">⏮</button>
+    <button class="ab-btn" onclick="abStep(1)" title="próxima frase">⏭</button>
+    <button class="ab-btn" onclick="abRepeat()" title="repete a frase">🔁</button>
+    <button class="ab-btn" onclick="changeRate(-1)" title="mais devagar">🐢</button>
+    <span class="ab-rate tts-rate">${rateLabel()}</span>
+    <button class="ab-btn" onclick="changeRate(1)" title="mais rápido">🐇</button>
+    <button class="ab-btn ${S.hideMacrons ? "toggled" : ""}" onclick="toggleMacrons()" title="esconde/mostra macrons">ā/a</button>`;
+}
+function showAbBar() {
+  const bar = document.getElementById("ab-bar");
+  if (!bar) return;
+  bar.innerHTML = abBarHTML();
+  bar.hidden = false;
+  document.body.classList.add("ab-active");
+}
+function hideAbBar() {
+  const bar = document.getElementById("ab-bar");
+  if (bar) bar.hidden = true;
+  document.body.classList.remove("ab-active");
 }
 function abInit() {
   window._ab = { sents: readerHTML._sents.slice(), i: 0, playing: false };
+  showAbBar();
 }
 function abHighlight(i) {
   document.querySelectorAll(".snt.playing").forEach(el => el.classList.remove("playing"));
@@ -8493,10 +8605,10 @@ function abToggle() {
   if (ab.playing) {
     ab.playing = false;
     speechSynthesis.cancel();
-    const b = $("#ab-play"); if (b) b.textContent = "▶️ ouvir";
+    const b = $("#ab-play"); if (b) b.textContent = "▶️";
   } else {
     ab.playing = true;
-    const b = $("#ab-play"); if (b) b.textContent = "⏸ pausa";
+    const b = $("#ab-play"); if (b) b.textContent = "⏸";
     abSpeakSentence(ab.i);
   }
 }
@@ -8525,7 +8637,7 @@ function abStopUI(finished) {
   const ab = window._ab;
   if (ab) { ab.playing = false; if (finished) ab.i = 0; }
   document.querySelectorAll(".snt.playing").forEach(el => el.classList.remove("playing"));
-  const b = $("#ab-play"); if (b) b.textContent = "▶️ ouvir";
+  const b = $("#ab-play"); if (b) b.textContent = "▶️";
 }
 function toggleMacrons() {
   S.hideMacrons = !S.hideMacrons;
@@ -8540,6 +8652,8 @@ function toggleMacrons() {
 function openPensumA() {
   const src = window._paSource;
   if (!src) return;
+  speechSynthesis && speechSynthesis.cancel();
+  window._ab = null; hideAbBar();
   // escolhe palavras que o motor sabe analisar
   const seen = new Set(), items = {};
   for (const m of src.text.matchAll(/[A-Za-zĀĒĪŌŪȲāēīōūȳ]+/g)) {
